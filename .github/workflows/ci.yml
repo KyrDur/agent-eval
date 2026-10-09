@@ -19,19 +19,19 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: |
-            EchoMind/requirements.txt
-            EchoMind/requirements-dev.txt
+            AgentEval/requirements.txt
+            AgentEval/requirements-dev.txt
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-          package_json_file: EchoMindFrontend/package.json
+          package_json_file: AgentEvalFrontend/package.json
           run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install backend test dependencies
         run: python -m pip install -r requirements-dev.txt
-        working-directory: EchoMind
+        working-directory: AgentEval
       - uses: actions/cache@v4
         with:
           path: ~/.cache/chroma/onnx_models/all-MiniLM-L6-v2
@@ -40,12 +40,12 @@ jobs:
         run: python -c "from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2; ONNXMiniLM_L6_V2(preferred_providers=['CPUExecutionProvider'])(['model initialization'])"
       - name: Run public backend regressions
         run: python -m pytest tests -q -rs
-        working-directory: EchoMind
+        working-directory: AgentEval
       - name: Install standalone frontend
         run: pnpm install --frozen-lockfile
-        working-directory: EchoMindFrontend
+        working-directory: AgentEvalFrontend
       - name: Test and build standalone frontend
         run: |
           pnpm test
           pnpm build
-        working-directory: EchoMindFrontend
+        working-directory: AgentEvalFrontend

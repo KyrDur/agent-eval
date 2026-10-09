@@ -22,18 +22,18 @@
 
 ```text
 agent-eval/
-  EchoMind/                 Python 后端、测试、Skill 模板及公开演示资料
+  AgentEval/                 Python 后端、测试、Skill 模板及公开演示资料
     experiments/app.py      当前产品的 ASGI 入口
     experiments/            知识、聊天、评测、比较、AI 助手和材料模块
     evaluation/             Agent 执行结果、规则及 Judge
     tests/                  合成数据测试和可选历史记录回归
-  EchoMindFrontend/         Vue 前端、Node 单元测试、浏览器测试定义
+  AgentEvalFrontend/         Vue 前端、Node 单元测试、浏览器测试定义
     src/pages/              设置、知识库、聊天、题目、评测、比较与材料页
   requirements-runtime.txt  独立产品的运行依赖
   Dockerfile                独立后端镜像；构建时预加载公开 Embedding 模型
 ```
 
-保留 `EchoMind` / `EchoMindFrontend` 文件夹名和 `ECHOMIND_*` 环境变量，兼容已有导入与部署；产品界面名称为 Agent Eval。各目录中的 `LEGACY_README.md`、旧 API / Memory / 监控模块是历史资料，**不是当前入口或上线范围的说明**。
+后端目录为 `AgentEval/`，前端目录为 `AgentEvalFrontend/`，配置统一使用 `AGENTEVAL_*`；产品界面名称为 Agent Eval。各目录中的 `LEGACY_README.md`、旧 API / Memory / 监控模块是历史资料，**不是当前入口或上线范围的说明**。
 
 ## 本地运行
 
@@ -47,7 +47,7 @@ cd agent-eval
 终端一：
 
 ```sh
-cd EchoMind
+cd AgentEval
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r ../requirements-runtime.txt
 # 第一次运行须联网下载公开模型，之后索引使用本机缓存。
@@ -58,14 +58,14 @@ python3.12 -m venv .venv
 终端二：
 
 ```sh
-cd EchoMindFrontend
+cd AgentEvalFrontend
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 `http://127.0.0.1:5173`，在设置页输入自己的模型配置和 API Key。前端 `/api` 请求经 Vite 代理到 `127.0.0.1:8000`；可用 `ECHOMIND_BACKEND_URL` 修改代理目标。请勿在命令、配置文件或提交记录里填写真实 Key。
+打开 `http://127.0.0.1:5173`，在设置页输入自己的模型配置和 API Key。前端 `/api` 请求经 Vite 代理到 `127.0.0.1:8000`；可用 `AGENTEVAL_BACKEND_URL` 修改代理目标。请勿在命令、配置文件或提交记录里填写真实 Key。
 
-默认模式只供本机单用户开发，数据写入 `EchoMind/data/experiments/`（Git 已排除）。API Key 在后端进程内存中保存，不写入实验 JSON；重启后需要重新配置。请保持单 worker，避免不同进程间的凭据状态不一致。
+默认模式只供本机单用户开发，数据写入 `AgentEval/data/experiments/`（Git 已排除）。API Key 在后端进程内存中保存，不写入实验 JSON；重启后需要重新配置。请保持单 worker，避免不同进程间的凭据状态不一致。
 
 ## 公网匿名工作区部署
 
@@ -78,23 +78,23 @@ docker volume create agent-eval-state
 docker run -d --name agent-eval-backend \
   -p 127.0.0.1:8000:8000 \
   -v agent-eval-state:/state \
-  -e ECHOMIND_ANONYMOUS_WORKSPACES=1 \
-  -e ECHOMIND_WORKSPACE_DIR=/state/workspaces \
-  -e ECHOMIND_PUBLIC_ORIGIN=https://your-domain.example \
-  -e ECHOMIND_COOKIE_SECURE=1 \
+  -e AGENTEVAL_ANONYMOUS_WORKSPACES=1 \
+  -e AGENTEVAL_WORKSPACE_DIR=/state/workspaces \
+  -e AGENTEVAL_PUBLIC_ORIGIN=https://your-domain.example \
+  -e AGENTEVAL_COOKIE_SECURE=1 \
   agent-eval:20261009
 ```
 
-`ECHOMIND_PUBLIC_ORIGIN` 必须与真实公开站点 origin 一致。匿名工作区依赖服务端签发的 HttpOnly / Secure cookie；写请求检查 Origin，提供商只允许已列明的 HTTPS 地址。容器 `/state` 需要持久化；模型在镜像构建时下载，未作为仓库文件提交。
+`AGENTEVAL_PUBLIC_ORIGIN` 必须与真实公开站点 origin 一致。匿名工作区依赖服务端签发的 HttpOnly / Secure cookie；写请求检查 Origin，提供商只允许已列明的 HTTPS 地址。容器 `/state` 需要持久化；模型在镜像构建时下载，未作为仓库文件提交。
 
-前端在 `EchoMindFrontend/` 执行 `pnpm build`，将 `dist/` 静态文件通过 HTTPS 站点发布；反向代理将 `/api/` 去掉前缀后转发到 `127.0.0.1:8000/`，并保留 Host、`X-Forwarded-Proto` 和请求 Origin。旧目录中的 compose 文件属于历史部署，当前独立应用请以上述入口为准。
+前端在 `AgentEvalFrontend/` 执行 `pnpm build`，将 `dist/` 静态文件通过 HTTPS 站点发布；反向代理将 `/api/` 去掉前缀后转发到 `127.0.0.1:8000/`，并保留 Host、`X-Forwarded-Proto` 和请求 Origin。旧目录中的 compose 文件属于历史部署，当前独立应用请以上述入口为准。
 
 ## 验证
 
 后端测试使用公开演示资料、合成用例和本地 HTTP 模型替身，不调用付费模型。需要已下载的 Embedding 缓存。
 
 ```sh
-cd EchoMind
+cd AgentEval
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest tests -q
 ```
@@ -102,7 +102,7 @@ cd EchoMind
 前端：
 
 ```sh
-cd EchoMindFrontend
+cd AgentEvalFrontend
 pnpm test
 pnpm build
 # 可选浏览器测试；此命令启动本地后端和固定响应的模型替身。
@@ -110,11 +110,11 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-浏览器测试默认使用 `../EchoMind/.venv/bin/python`，可通过 `ECHOMIND_TEST_PYTHON` 指定其他解释器。证据输出到仓库 `output/e2e-captures/agent-eval/`，不会提交。
+浏览器测试默认使用 `../AgentEval/.venv/bin/python`，可通过 `AGENTEVAL_TEST_PYTHON` 指定其他解释器。证据输出到仓库 `output/e2e-captures/agent-eval/`，不会提交。
 
 部分历史回归测试依赖私人的已封存实验与完整性清单；公开克隆默认明确跳过这些测试，其他合成回归继续执行。若持有原始资料，可以设置 `AGENT_EVAL_GOLDEN_FIXTURES`、`AGENT_EVAL_RERANK_FIXTURES`、`AGENT_EVAL_ARCHIVE_ROOT` 后执行相应测试。这些跳过项不代表已经在公开克隆中验证了真实模型质量。
 
-本次导入保留线上 Python 运行文件的字节内容，避免改变冻结实验中的实现指纹。只调整测试资料发现方式和浏览器测试本机路径。独立 CI 负责安装依赖、预加载模型、运行后端回归及前端测试和构建。
+本项目已统一内部名称、目录和配置前缀。改名会改变相关实现文件的指纹；新的实验使用新的实现记录，旧实验不会被改写。独立 CI 负责安装依赖、预加载模型、运行后端回归及前端测试和构建。
 
 本仓库不包含用户凭据、私有工作区、历史实验记录、模型权重、宣传片或网站截图。
 
@@ -123,5 +123,9 @@ pnpm test:e2e
 - 后端：357 passed / 38 skipped。37 项需要未公开的历史记录与清单，1 项要求显式开启真实模型测试。
 - 前端：60 项测试通过，生产构建通过。
 - 独立 Docker 镜像构建通过；断网验证匿名工作区初始化、本地语义索引和跨工作区隔离通过。
-- 51 个后端运行文件与 2026-10-09 线上发布清单的 SHA-256 一致。
+- 初始源码来自 2026-10-09 上线版；当前仓库已完成内部命名调整。
 - 本轮未调用付费模型；这些回归不能证明 LLM Judge 的判定准确率。
+
+## 内部命名与配置
+
+后端与前端目录分别为 `AgentEval/`、`AgentEvalFrontend/`。环境变量、匿名工作区 cookie、浏览器存储键、容器及监控服务名称统一使用 AgentEval 命名。部署新版时需同步 `AGENTEVAL_*` 配置。浏览器将使用新的工作区 cookie 与导航存储键，不会自动沿用改名前的浏览器身份。原服务端实验记录不会被本次源码改名删除或改写。

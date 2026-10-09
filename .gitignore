@@ -11,8 +11,8 @@ test-results/
 playwright-report/
 output/
 state/
-EchoMind/data/experiments/
-EchoMind/data/chroma/
+AgentEval/data/experiments/
+AgentEval/data/chroma/
 *.log
 *.tar.gz
 *.mp4
