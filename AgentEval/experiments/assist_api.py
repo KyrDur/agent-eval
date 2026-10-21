@@ -27,6 +27,24 @@ class TraceInput(AssistInput):
 class BindingInput(Input):
     judge_provider_session_id: str | None = None
 
+class EvaluationChatInput(AssistInput):
+    run_id: str | None = None
+    comparison_id: str | None = None
+    case_id: str | None = None
+    question: str = Field(min_length=1, max_length=2000)
+    parent_turn_id: str | None = None
+    score_report_id: str | None = None
+
+@router.post('/ai/evaluation-chat')
+async def evaluation_chat(body: EvaluationChatInput):
+    from .evaluation_chat import EvaluationChatService
+    return await acquire(EvaluationChatService(retrieval()).chat(**body.model_dump()))
+
+@router.get('/ai/evaluation-chat')
+def evaluation_chat_history(run_id: str | None = None, comparison_id: str | None = None, case_id: str | None = None, score_report_id: str | None = None):
+    from .evaluation_chat import EvaluationChatService
+    return execute(EvaluationChatService(retrieval()).history, run_id, comparison_id, case_id, score_report_id)
+
 @router.get('/ai/provider-options')
 def options():
     providers=service().providers

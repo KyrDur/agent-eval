@@ -1,0 +1,45 @@
+import {test,expect} from '@playwright/test'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+
+test('Fixed-answer recovery preserves original report, records null and recovery, and exports one protocol subset',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message))
+ await page.goto('/');await expect(page.getByRole('button',{name:'使用自己的模型做实验',exact:true})).toBeEnabled()
+ const post=async(url,data)=>{const r=await page.request.post('/api/experiments'+url,{data});expect(r.ok(),await r.text()).toBeTruthy();return r.json()}
+ const session=await post('/provider-sessions',{provider:'openai-compatible',base_url:`http://127.0.0.1:${process.env.AGENTEVAL_TEST_PROVIDER_PORT||8124}/v1`,model:'recovery-null-fixture',max_tokens:4096,max_calls:50,api_key:'recovery-browser-fixture-only'})
+ await post(`/provider-sessions/${session.provider_session_id}/test`,{})
+ const knowledge=await post('/knowledge-datasets',{name:'评分恢复软件验收',documents:[{document_id:'spec',text:'书桌是刨花板，承重30公斤。'}]})
+ const index=await post(`/knowledge-datasets/${knowledge.knowledge_dataset_id}/index`,{version:1,embedding_model:'sha256-lexical-bigram-v1'})
+ const dataset=await post('/retrieval-evalsets',{name:'恢复软件验收',index_id:index.index_id,cases:[{case_id:'recovery-spec',query:'书桌材质与承重？',reference_complete:true,relevant_document_ids:['spec']},{case_id:'recovery-second',query:'书桌能承重多少？',reference_complete:true,relevant_document_ids:['spec']}]})
+ const original=await post('/retrieval-runs',{provider_session_id:session.provider_session_id,retrieval_eval_set_id:dataset.retrieval_eval_set_id,verify_answers:true,scoring_profile_id:'initial-evidence-v1'})
+ await page.evaluate(({sid,kid,iid,eid,bid})=>{localStorage.setItem('agenteval.workspace.v1',JSON.stringify({step:'evaluate',session:sid}));localStorage.setItem('agenteval.retrieval.v1',JSON.stringify({knowledge:kid,index:iid,evalSet:eid,baseline:bid,session:sid}))},{sid:session.provider_session_id,kid:knowledge.knowledge_dataset_id,iid:index.index_id,eid:dataset.retrieval_eval_set_id,bid:original.run_id})
+ await page.reload()
+ const recovery=page.getByRole('region',{name:'单题评分恢复',exact:true})
+ await recovery.getByRole('button',{name:'仅重评这一题',exact:true}).click()
+ await expect(recovery.getByText(/最多 2 次评分请求/)).toBeVisible()
+ const request=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/scoring-jobs'))
+ await recovery.getByRole('button',{name:'开始评分',exact:true}).click()
+ const sent=await request
+ const replay=await page.request.post(sent.url(),{data:sent.postDataJSON()});expect(replay.ok()).toBeTruthy()
+ const replayBody=await replay.json()
+ await expect(recovery.getByText('新协议 · 通过',{exact:true})).toBeVisible({timeout:20000})
+ await expect(recovery.getByText(/形成判定 1\/1 题 · 通过 1\/1 题/)).toBeVisible()
+ await recovery.getByText('历次评分尝试 · 2 次',{exact:true}).click()
+ await expect(recovery.getByText('dimensions.actionability.score',{exact:true}).first()).toBeVisible()
+ const job=await (await page.request.get('/api/experiments/scoring-jobs/'+replayBody.job.job_id)).json()
+ expect(job.events.filter(e=>e.phase==='STARTED')).toHaveLength(2)
+ expect(job.report.summary.agent_calls).toBe(0);expect(job.report.summary.retrieval_calls).toBe(0)
+ const pending=page.waitForEvent('download');await recovery.getByRole('button',{name:'下载本修订 CSV',exact:true}).click()
+ const file=await pending;const csv=await fs.readFile(await file.path(),'utf8')
+ expect(csv).toContain(job.report.report_id);expect(csv).toContain('新评分协议')
+ const unchanged=await (await page.request.get('/api/experiments/retrieval-runs/'+original.run_id)).json()
+ expect(unchanged.run.answer_results).toEqual(original.answer_results)
+ expect(unchanged.run.provider_call_count).toBe(original.provider_call_count)
+ await page.reload();await expect(recovery.getByText('新协议 · 通过',{exact:true})).toBeVisible()
+ const stable=await (await page.request.get('/api/experiments/scoring-jobs/'+job.job.job_id)).json()
+ expect(stable.events).toEqual(job.events)
+ await page.setViewportSize({width:390,height:844})
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false)
+ if(process.env.AGENTEVAL_TEST_EVIDENCE_DIR){await recovery.screenshot({path:path.join(process.env.AGENTEVAL_TEST_EVIDENCE_DIR,'score-recovery-mobile.png')});await fs.writeFile(path.join(process.env.AGENTEVAL_TEST_EVIDENCE_DIR,'score-recovery-job.json'),JSON.stringify(stable,null,2))}
+ expect(errors).toEqual([])
+})

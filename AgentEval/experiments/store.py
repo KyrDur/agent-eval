@@ -13,6 +13,7 @@ from .practice_models import ChatTurn, RepeatReport, ExperimentConclusion, Inter
 from .assist import AssistDraft
 from .retrieval_models import (KnowledgeDataset, KnowledgeIndex, RetrievalEvalSet, RetrievalRun,
                                RetrievalChange, RetrievalComparison, RetrievalReview)
+from .retrieval_validation import RetrievalValidation
 
 TYPES = {"provider_sessions": (ProviderSession, "provider_session_id"), "evalsets": (EvalSet, "eval_set_id"), "runs": (Run, "run_id"),
          "decisions": (Decision, "decision_id"), "changes": (Change, "change_id"),
@@ -29,6 +30,29 @@ TYPES.update({"knowledge_datasets": (KnowledgeDataset, "knowledge_dataset_id"),
               "retrieval_changes": (RetrievalChange, "change_id"),
               "retrieval_comparisons": (RetrievalComparison, "comparison_id"),
               "retrieval_reviews": (RetrievalReview, "review_id")})
+TYPES.update({'retrieval_validations':(RetrievalValidation,'validation_id'),
+              'retrieval_validation_runs':(RetrievalRun,'run_id')})
+from .learning_models import LearningAttempt, LearningEvent, LearningReview
+TYPES.update({'learning_attempts':(LearningAttempt,'attempt_id'),
+              'learning_events':(LearningEvent,'event_id'),'learning_reviews':(LearningReview,'review_id')})
+from .calibration_models import (CalibrationDataset, RubricVersion, Annotation, Adjudication,
+    CalibrationAccess, JudgeProtocolVersion, CalibrationRun, CalibrationComparison,
+    CalibrationValidation, CalibrationConclusion, CalibrationHypothesis, CalibrationIssue, CalibrationIssueEvent)
+TYPES.update({
+    'calibration_datasets':(CalibrationDataset,'dataset_id'), 'calibration_rubrics':(RubricVersion,'rubric_id'),
+    'calibration_annotations':(Annotation,'annotation_id'), 'calibration_adjudications':(Adjudication,'adjudication_id'),
+    'calibration_access':(CalibrationAccess,'access_id'), 'calibration_protocols':(JudgeProtocolVersion,'protocol_id'),
+    'calibration_runs':(CalibrationRun,'run_id'), 'calibration_comparisons':(CalibrationComparison,'comparison_id'),
+    'calibration_validations':(CalibrationValidation,'validation_id'), 'calibration_conclusions':(CalibrationConclusion,'conclusion_id'),
+    'calibration_hypotheses':(CalibrationHypothesis,'hypothesis_id'),
+    'calibration_issues':(CalibrationIssue,'issue_id'), 'calibration_issue_events':(CalibrationIssueEvent,'event_id')})
+from .operations_models import DomainVersion, EvidenceBatch, InferenceJob, InferenceEvent, OperationsReview, SamplingPlan, DailyPlan
+from .judge_jobs import AnswerArtifact, ScoreJob, JudgeAttempt, ScoreReport, ScoreRequest
+TYPES.update({'answer_artifacts':(AnswerArtifact,'answer_id'),'score_jobs':(ScoreJob,'job_id'),
+              'judge_attempts':(JudgeAttempt,'event_id'),'score_reports':(ScoreReport,'report_id'),'score_requests':(ScoreRequest,'request_id')})
+TYPES.update({'operation_domains':(DomainVersion,'profile_id'),'evidence_batches':(EvidenceBatch,'batch_id'),
+    'inference_jobs':(InferenceJob,'job_id'),'inference_events':(InferenceEvent,'event_id'),
+    'operations_reviews':(OperationsReview,'review_id'),'sampling_plans':(SamplingPlan,'plan_id'),'daily_plans':(DailyPlan,'plan_id')})
 VERSION_FIELDS = {'evalsets': 'eval_set_version', 'knowledge_datasets': 'version', 'retrieval_evalsets': 'version'}
 TERMINAL = {"COMPLETE", "PARTIAL", "FAILED"}
 SENSITIVE = re.compile(r"(^|_)(api_key|authorization|secret|password|credential|access_token|refresh_token)($|_)", re.I)
@@ -67,7 +91,7 @@ class JsonStore:
 
     def acquire_run_lease(self,identifier,group="runs"):
         self.path(group,identifier)  # Validate before using identity in a lock filename.
-        directory = self.root / (".run-leases" if group == "runs" else ".retrieval-run-leases")
+        directory = self.root / (".run-leases" if group == "runs" else ".retrieval-run-leases" if group=="retrieval_runs" else "."+group+"-leases")
         directory.mkdir(exist_ok=True)
         stream = (directory / identifier).open("a+")
         try:
@@ -126,16 +150,46 @@ class JsonStore:
         revision = getattr(obj, VERSION_FIELDS[group]) if group in VERSION_FIELDS else None
         path = self.path(group, getattr(obj, id_field),revision)
         if path.exists():
+            if group in {'answer_artifacts','judge_attempts','score_reports','score_requests'}:
+                raise ValueError('Immutable scoring evidence already sealed')
+            if group in {'operation_domains','evidence_batches','inference_events','operations_reviews','sampling_plans','daily_plans'}:
+                raise ValueError('Immutable operations evidence already sealed')
+            if group in {'learning_attempts','learning_events','learning_reviews'}:
+                raise ValueError('Immutable learning record already sealed')
             previous = self.get(group, getattr(obj, id_field),revision)
+            if group=='score_jobs':
+                mutable={'status','finished_at','report_id','last_error'}
+                if previous.status in {'COMPLETE','FAILED'} or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Scoring controls frozen')
+            if group == 'inference_jobs':
+                mutable={'status','started_at','finished_at','attempt','last_error','uncertain_delivery_attempts'}
+                if any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):raise ValueError('Inference controls frozen')
+            if group=='retrieval_validations':
+                allowed={('LOCKED','RUNNING'),('RUNNING','RUNNING'),('RUNNING','COMPLETE'),('RUNNING','FAILED')}
+                mutable={'status','run_ids','released_at','error','report'}
+                if (previous.status,obj.status) not in allowed or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Sealed holdout validation or controls changed')
+            if group.startswith('calibration_'):
+                if group=='calibration_runs':
+                    mutable={'status','finished_at','results','metrics','provider_observations','request_count','elapsed_ms','warnings'}
+                    if previous.status!='RUNNING' or obj.status not in TERMINAL:
+                        raise ValueError('Calibration Run already sealed')
+                elif group=='calibration_validations':
+                    mutable={'status','run_ids','comparison_id','released_at'}
+                    if (previous.status,obj.status) not in {('LOCKED','RUNNING'),('RUNNING','COMPLETE'),('RUNNING','FAILED')}:
+                        raise ValueError('Calibration validation transition invalid')
+                else: raise ValueError('Immutable calibration artifact already sealed')
+                if any(previous.model_dump(mode='json')[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Calibration controls frozen')
             if group in {'ai_drafts','knowledge_datasets','knowledge_indices','retrieval_evalsets',
                          'retrieval_comparisons','retrieval_reviews','chat_turns','repeat_reports','experiment_conclusions','interview_attempts'}:
                 raise ValueError('Immutable retrieval artifact already sealed')
-            if group == 'retrieval_runs':
+            if group in {'retrieval_runs','retrieval_validation_runs'}:
                 if previous.status in TERMINAL:
                     raise ValueError('Immutable retrieval Run already sealed')
                 mutable = {'status','finished_at','case_results','answer_results','metrics','answer_metrics',
-                           'provider_observations','provider_call_count','warnings','runtime_end_check'}
-                if obj.status not in TERMINAL or any(previous.model_dump()[k] != data[k] for k in data if k not in mutable):
+                           'provider_observations','provider_call_count','warnings','runtime_end_check','input_packages','sample_flow'}
+                if obj.status not in TERMINAL|{'RUNNING'} or any(previous.model_dump()[k] != data[k] for k in data if k not in mutable):
                     raise ValueError('Retrieval Run controls are frozen')
             if group == 'retrieval_changes':
                 if previous.implemented_status != 'PROPOSED' or obj.implemented_status != 'APPLIED':

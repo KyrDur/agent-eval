@@ -10,6 +10,31 @@ from experiments.retrieval_models import KnowledgeIndex
 from experiments.practice_service import PracticeService
 from test_retrieval import fixture, DOCS, CASES
 
+def test_bounded_runtime_matches_original_pooling_with_single_item_native_batches():
+    import numpy as np
+    from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+    from experiments.retrieval_embeddings import semantic_state,encode
+    runtime,_=semantic_state()
+    native=runtime.model
+    shapes=[]
+    class ObservedSession:
+        def run(self,outputs,inputs):
+            shapes.append(inputs['input_ids'].shape)
+            return native.run(outputs,inputs)
+    runtime.model=ObservedSession()
+    texts=['订单退款规则。','Refunds return within seven business days.','商品材料与承重说明。']*12
+    try:
+        actual=np.array(encode(texts))
+        assert len(shapes)==len(texts) and all(shape[0]==1 for shape in shapes)
+        expected=ONNXMiniLM_L6_V2._forward(runtime,texts,batch_size=32)
+        np.testing.assert_allclose(actual,expected,rtol=0,atol=1e-6)
+        options=native.get_session_options()
+        assert options.intra_op_num_threads==options.inter_op_num_threads==1
+        assert not options.enable_cpu_mem_arena and not options.enable_mem_pattern
+        assert snapshot()['configuration']['executor_resource_policy']['inference_batch_size']==1
+    finally:
+        runtime.model=native
+
 @pytest.fixture(scope='module')
 def knowledge(tmp_path_factory):
     return FrozenKnowledge(JsonStore(tmp_path_factory.mktemp('real-semantic')/'store'))

@@ -75,8 +75,13 @@ def test_chat_to_case_requires_user_criteria_and_keeps_provenance(env):
     assert not any('平台预设题' in l for l in evidence.limitations)
 
 def knowledge_pair(env):
-    cases=[{'case_id':'opened','query':'拆了还能退吗？','relevant_document_ids':['opened'],'expected_answer':'核验商品状态','partition':'HOLDOUT'}]
-    ev=env.rag.create_evalset(env.index.index_id,'知识实验',cases)
+    # Knowledge-change regression uses DEBUG; the separate exception question
+    # remains frozen and unexecuted until the dedicated holdout operation.
+    cases=[{'case_id':'opened','query':'拆了还能退吗？','relevant_document_ids':['opened'],
+            'expected_answer':'核验商品状态','partition':'DEBUG','group_id':'opened-state','reference_complete':True},
+           {'case_id':'custom-exception','query':'定制商品能不能退？','relevant_document_ids':['opened'],
+            'expected_answer':'定制商品不适用','partition':'HOLDOUT','group_id':'custom-exception','reference_complete':True}]
+    ev=env.rag.create_evalset(env.index.index_id,'知识实验',cases,split_reviewed=True)
     base=asyncio.run(env.rag.run(env.sid,ev.retrieval_eval_set_id,verify_answers=True))
     docs=deepcopy(env.docs);docs[0]['text']+=' 非定制商品在七天内可核验退货。'
     k2=env.rag.knowledge.create(docs,'知识实验',env.k.knowledge_dataset_id)
@@ -95,7 +100,11 @@ def test_knowledge_update_preserves_tests_and_retrieval_with_real_version_eviden
     assert a.controls['knowledge_snapshot']['version']==1 and b.controls['knowledge_snapshot']['version']==2
     assert a.controls['eval_set_snapshot']['cases']==b.controls['eval_set_snapshot']['cases']
     assert a.retrieval_config==b.retrieval_config
-    assert comparison.case_pairs[0]['partition']=='HOLDOUT'
+    assert comparison.case_pairs[0]['partition']=='DEBUG'
+    assert a.execution_order==b.execution_order==['opened']
+    assert a.controls['eval_set_snapshot']['split_reviewed'] and b.controls['eval_set_snapshot']['split_reviewed']
+    assert a.controls['eval_set_snapshot']['cases'][1]['partition']=='HOLDOUT'
+    assert all(row['case_id']!='custom-exception' for run in (a,b) for row in run.case_results)
     assert env.rag.store.get('knowledge_datasets',env.k.knowledge_dataset_id,1).documents[0]['text']==env.docs[0]['text']
     saved=env.practice.conclude(comparison.comparison_id,'REVISE','当前样本过少，需要验证更多边界题。',True)
     career=CareerService(env.exp)
@@ -129,6 +138,16 @@ def test_knowledge_change_rejects_second_variable_or_other_dataset(env):
     with pytest.raises(ValueError):env.rag.propose_change(a.run_id,'KNOWLEDGE_UPDATE',{'top_k':1},'同时修改',['opened'],True,index.index_id)
     other=env.rag.knowledge.create(env.docs,'另一个知识库');other_index=env.rag.knowledge.build(other.knowledge_dataset_id,1, embedding_model='sha256-lexical-bigram-v1')
     with pytest.raises(ValueError):env.rag.propose_change(a.run_id,'KNOWLEDGE_UPDATE',a.retrieval_config.model_dump(),'换库',['opened'],True,other_index.index_id)
+
+def test_holdout_requires_group_review_and_rejects_same_family_across_split(env):
+    cases=[{'case_id':'debug','query':'拆了还能退吗？','relevant_document_ids':['opened'],'group_id':'return-state'},
+           {'case_id':'holdout','query':'定制商品能不能退？','relevant_document_ids':['opened'],
+            'partition':'HOLDOUT','group_id':'custom-exception'}]
+    with pytest.raises(ValueError,match='HOLDOUT_GROUP_REVIEW_REQUIRED'):
+        env.rag.create_evalset(env.index.index_id,'Unreviewed fixture',cases)
+    same_family=deepcopy(cases);same_family[1]['query']=same_family[0]['query']
+    with pytest.raises(ValueError,match='CROSS_PARTITION_FAMILY'):
+        env.rag.create_evalset(env.index.index_id,'Duplicate family fixture',same_family,split_reviewed=True)
 
 def test_missing_knowledge_case_is_explicit_and_becomes_retrievable(env):
     cases=[{'case_id':'new','query':'会员积分一元消费多少积分？','relevant_document_ids':['points'],
@@ -201,3 +220,17 @@ def test_legacy_materials_remain_readable_when_new_evidence_facts_are_added(env)
     assert career.career.get('views',legacy.view_id).schema_version=='1'
     assert career.export(old.material_id)['label']==old.label
     assert career.career.path('materials',old.material_id).read_bytes()==old_bytes
+
+
+def test_retrieval_request_dedupes_concurrent_generation_and_rejects_changed_body(env):
+    ev=env.rag.create_evalset(env.index.index_id,'请求去重软件验收',[{'case_id':'dedupe','query':'拆了还能退吗？','relevant_document_ids':['opened']}])
+    async def concurrent():
+        return await asyncio.gather(*[env.rag.run(env.sid,ev.retrieval_eval_set_id,verify_answers=True,request_id='same-frozen-request') for _ in range(2)])
+    a,b=asyncio.run(concurrent())
+    assert a.run_id==b.run_id
+    sealed=env.exp.store.get('retrieval_runs',a.run_id)
+    assert sealed.provider_call_count==2 and len(env.exp.store.list('retrieval_runs'))==1
+    again=asyncio.run(env.rag.run(env.sid,ev.retrieval_eval_set_id,verify_answers=True,request_id='same-frozen-request'))
+    assert again.run_id==a.run_id and again.status=='COMPLETE'
+    with pytest.raises(ValueError,match='IDEMPOTENCY_CONFLICT'):
+        asyncio.run(env.rag.run(env.sid,ev.retrieval_eval_set_id,verify_answers=True,retrieval_config={'top_k':1},request_id='same-frozen-request'))

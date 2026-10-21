@@ -22,6 +22,12 @@ test('New Evidence clears displayed material, never rewrites old material',async
  f.c.state.evidence={evidence_object_id:'old',baseline_run_id:'rag_base',experiment_type:'RETRIEVAL'};f.c.state.material={material_id:'saved'}
  await f.c.build();assert.equal(f.c.state.material,null);assert.equal(posts[0][1].parent_evidence_id,'old');assert.equal(posts.length,1)
 })
+test('Process-based evidence explicitly requests project defaults without fabricated user input',async()=>{
+ const posts=[];const f=fixture({get:async()=>[],post:async(p,b)=>{posts.push([p,b]);return {evidence_object_id:'from_process'}}})
+ await f.c.build(null,'PROJECT_TEMPLATE')
+ assert.equal(posts[0][1].context_mode,'PROJECT_TEMPLATE');assert.equal(posts[0][1].context,null)
+ assert.equal(posts[0][1].baseline_run_id,'rag_base')
+})
 test('Opening old material restores its own locked Evidence',async()=>{
  const calls=[];const f=fixture({get:async p=>{calls.push(p);return p.includes('/materials/')?{material_id:'old',evidence_object_id:'frozen'}:{evidence_object_id:'frozen'}}})
  await f.c.openMaterial('old');assert.deepEqual(calls,['/career/materials/old','/career/evidence/frozen'])

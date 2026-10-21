@@ -16,6 +16,7 @@ class EvidenceInput(Input):
     retest_run_id: str | None = None
     comparison_id: str | None = None
     context: ProjectContext | None = None
+    context_mode: Literal['MANUAL','PROJECT_TEMPLATE'] = 'MANUAL'
     parent_evidence_id: str | None = None
 
 class GenerateInput(Input):

@@ -51,6 +51,49 @@ def build_rag(rag,context=CONTEXT):
  c,d=rag
  return c.build('RETRIEVAL',d['baseline']['run_id'],d['retest']['run_id'],d['comparison']['comparison_id'],context)
 
+def test_project_template_derives_contribution_without_questionnaire_or_mutation(agent):
+ from experiments.career_evidence import normalize
+ c,a,b,comp=agent
+ before={p:p.read_bytes() for p in c.store.root.rglob('*.json')}
+ e=c.build('AGENT_BEHAVIOR',a.run_id,b.run_id,comp.comparison_id,context_mode='PROJECT_TEMPLATE')
+ assert e.context.target_users=='18–24 岁、缺少项目经历的求职者'
+ assert e.context.user_roles==['产品设计']
+ assert '初测' in e.context.user_contribution and '复测' in e.context.user_contribution and '逐题对比' in e.context.user_contribution
+ assert '独立开发' in e.context.system_contribution
+ assert not any(cl.source_type=='USER_ENTERED_CONTEXT' for cl in e.claims if cl.claim_type.startswith('CONTEXT_'))
+ origin=e.source_map['derived:context_origin']['snapshot']
+ assert origin['origin']=='PROJECT_TEMPLATE' and origin['real_users_and_deployment']=='NOT_VERIFIED'
+ view=normalize(e,'EVALUATION_WORKBENCH','GENERAL_PM')
+ assert view.facts['user_contribution'].evidence_state=='VERIFIED_RECORD'
+ assert view.facts['real_users'].evidence_state=='MISSING'
+ assert view.facts['root_cause'].evidence_state in {'MISSING','INFERENCE'}
+ material=c.generate_v2(e.evidence_object_id)
+ assert material.sections['resume_ai'][0].text!=material.sections['resume_general'][0].text
+ text='\n'.join(s.text for ss in material.sections.values() for s in ss)
+ assert '产品设计' in text and '本次记录未验证实际用户规模' in text
+ assert '用户确认当前没有真实用户' not in text
+ assert all(p.read_bytes()==content for p,content in before.items())
+
+def test_project_template_without_retest_does_not_invent_work_or_gain(agent):
+ c,a,_,_=agent
+ e=c.build('AGENT_BEHAVIOR',a.run_id,context_mode='PROJECT_TEMPLATE')
+ assert '复测' not in e.context.user_contribution and '逐题对比' not in e.context.user_contribution
+ material=c.generate_v2(e.evidence_object_id)
+ resume='\n'.join(s.text for s in material.sections['resume_ai'])
+ assert '不能宣称优化有效' in resume
+ assert not e.context.reflection_confirmed
+ with pytest.raises(ValueError,match='one context source'):
+  c.build('AGENT_BEHAVIOR',a.run_id,context=CONTEXT,context_mode='PROJECT_TEMPLATE')
+
+def test_project_template_api_mode_and_legacy_context_are_both_supported(agent):
+ c,a,_,_=agent
+ app=FastAPI();configure(lambda:c.experiments);app.include_router(router);client=TestClient(app)
+ r=client.post('/experiments/career/evidence',json={'experiment_type':'AGENT_BEHAVIOR','baseline_run_id':a.run_id,'context_mode':'PROJECT_TEMPLATE'})
+ assert r.status_code==200,r.text
+ assert r.json()['context']['user_roles']==['产品设计']
+ legacy=client.post('/experiments/career/evidence',json={'experiment_type':'AGENT_BEHAVIOR','baseline_run_id':a.run_id,'context':CONTEXT})
+ assert legacy.status_code==200 and legacy.json()['context']['target_users']==CONTEXT['target_users']
+
 def test_agent_actual_run_and_contribution_boundaries(agent):
  c,a,b,comp=agent;before={p:p.read_bytes() for p in c.store.root.rglob('*.json')}
  e=build_agent(agent);m=c.generate(e.evidence_object_id)

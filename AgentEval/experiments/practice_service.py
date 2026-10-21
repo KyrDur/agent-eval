@@ -70,6 +70,7 @@ class PracticeService:
                 pipeline=pipeline_snapshot(session.configuration),message=message.strip(),context=context,
                 answer=answer,status=status,error=error,retrieval=row,citations=citations,
                 provider_observations=provider.observations,provider_call_count=provider.call_count,
+                provider_call_traces=provider.call_traces,
                 latency_ms=(time.monotonic()-started)*1000)
             with self.store.transaction(): return self.store.put('chat_turns',artifact)
         finally:
@@ -90,11 +91,16 @@ class PracticeService:
         safe_artifact(case.model_dump(),self.store.forbidden_values)
         return case
 
-    def conclude(self, comparison_id, decision, reason, user_confirmed):
-        self.store.get('retrieval_comparisons',comparison_id)
+    def conclude(self, comparison_id, decision, reason, user_confirmed,decision_scope='FULL_SCOPE'):
+        comparison=self.store.get('retrieval_comparisons',comparison_id)
         if not reason.strip() or not user_confirmed: raise ValueError('Explicit judgment required')
+        trust=getattr(comparison,'trust_summary',{})
+        restrictions=trust.get('restriction_reasons',[])
+        if decision=='KEEP' and trust and not trust.get('adoption_allowed') and decision_scope!='LIMITED_OBSERVATION':
+            raise ValueError('LIMITED_DECISION_SCOPE_REQUIRED')
         artifact=ExperimentConclusion(comparison_id=comparison_id,decision=decision,
-            reason=reason.strip(),user_confirmed=True)
+            reason=reason.strip(),user_confirmed=True,schema_version='EXPERIMENT_DECISION_V1',
+            decision_scope=decision_scope,limitations_snapshot=restrictions)
         with self.store.transaction(): return self.store.put('experiment_conclusions',artifact)
 
     async def repeat(self, source_run_id, provider_session_id, repetitions):
@@ -109,7 +115,8 @@ class PracticeService:
         for _ in range(repetitions):
             run=await self.rag.run(provider_session_id,snapshot['retrieval_eval_set_id'],
                 version=snapshot['version'],retrieval_config=source.retrieval_config.model_dump(),
-                verify_answers=source.verify_answers)
+                verify_answers=source.verify_answers,
+                scoring_profile_id=(source.controls.get('scoring_profile') or {}).get('profile_id'))
             if run.controls!=source.controls: raise ValueError('Frozen repetition controls changed')
             runs.append(run)
         summary={}
@@ -118,7 +125,8 @@ class PracticeService:
             summary[metric]={'values':values,'minimum':min(values) if values else None,
                 'maximum':max(values) if values else None,'mean':sum(values)/len(values) if values else None}
         summary['attempts']=[{'run_id':r.run_id,'status':r.status,'answer_metrics':r.answer_metrics,
-            'latency_ms':sum(c['latency_ms'] for c in r.case_results)} for r in runs]
+            'retrieval_latency_ms':sum(c['latency_ms'] for c in r.case_results),
+            'latency_ms':sum(c['case_latency_ms'] for c in r.case_results) if all('case_latency_ms' in c for c in r.case_results) else None} for r in runs]
         report=RepeatReport(source_run_id=source_run_id,run_ids=[r.run_id for r in runs],repetitions=repetitions,
             summary=summary,provider_call_count=sum(r.provider_call_count for r in runs),
             warnings=['STABILITY_CHECK_NOT_CAUSAL_PROOF','SAME_CASES_NOT_NEW_HOLDOUT','MODEL_BACKEND_REVISION_UNKNOWN'])

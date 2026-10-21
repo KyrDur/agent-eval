@@ -37,11 +37,12 @@ def _fingerprint(folder, signature):
 def semantic_state():
     global _state
     from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+    from .retrieval_embedding_runtime import BoundedMiniLM
     folder = ONNXMiniLM_L6_V2.DOWNLOAD_PATH / ONNXMiniLM_L6_V2.EXTRACTED_FOLDER_NAME
     with _lock:
         try:
             if _state is None or _state[0] != _signature(folder):
-                ef = ONNXMiniLM_L6_V2(preferred_providers=['CPUExecutionProvider'])
+                ef = BoundedMiniLM(preferred_providers=['CPUExecutionProvider'])
                 # Chroma validates the downloaded archive before extraction.
                 ef(['model initialization'])
                 signature = _signature(folder)
@@ -60,6 +61,7 @@ def snapshot(model=SEMANTIC):
     import onnxruntime
     import tokenizers
     from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+    from .retrieval_embedding_runtime import BoundedMiniLM,RESOURCE_POLICY
     _, hashes = semantic_state()
     return {'provider':'local','model':SEMANTIC,'dimension':384,
             'normalization':'NFKC whitespace lowercase L2','distance_metric':'cosine',
@@ -70,6 +72,8 @@ def snapshot(model=SEMANTIC):
                 'pooling':'attention-mask mean','max_input_tokens':256,
                 'overflow_policy':'REJECT_NO_TRUNCATION','model_files_sha256':hashes,
                 'backend_implementation_hash':text_hash(inspect.getsource(ONNXMiniLM_L6_V2)),
+                'executor_implementation_hash':text_hash(inspect.getsource(BoundedMiniLM)),
+                'executor_resource_policy':dict(RESOURCE_POLICY),
                 'chromadb_version':chromadb.__version__,'onnxruntime_version':onnxruntime.__version__,
                 'tokenizers_version':tokenizers.__version__}}
 
@@ -88,7 +92,8 @@ def encode(texts, model=SEMANTIC):
         tokenizer.no_padding()
         if any(len(tokenizer.encode(text).ids) > 256 for text in texts):
             raise EmbeddingFailure('EMBEDDING_INPUT_TOO_LONG')
-        vectors = ef(texts)
+        with _lock:
+            vectors = ef(texts)
         result = [v.tolist() for v in vectors]
         import math
         if any(len(v)!=384 or any(not math.isfinite(x) for x in v) for v in result):

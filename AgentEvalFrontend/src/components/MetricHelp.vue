@@ -17,7 +17,7 @@ onUnmounted(()=>window.removeEventListener('resize',position))
 </script>
 <template>
   <span class="metric-help" @mouseenter="open=true" @mouseleave="!focused && (open=false)">
-    <button ref="button" type="button" class="metric-help-button" :aria-label="`${metric.label} 指标说明`" :aria-describedby="open?tooltipId:undefined"
+    <button v-track="{action:'metric.help.'+metric.id,placement:'MetricHelp.control_01'}" ref="button" type="button" class="metric-help-button" :aria-label="`${metric.label} 指标说明`" :aria-describedby="open?tooltipId:undefined"
       @focus="focused=true;open=true" @blur="focused=false;open=false" @click="open=true" @keydown.esc.stop="open=false">
       <span aria-hidden="true">?</span>
     </button>

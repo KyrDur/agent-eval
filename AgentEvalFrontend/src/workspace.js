@@ -1,3 +1,4 @@
+import {analytics} from './analytics.js'
 import { reactive } from 'vue'
 import { api, ApiError } from './api.js'
 import { readPointers, savePointers, terminal } from './presentation.js'
@@ -13,12 +14,12 @@ export function createWorkspace(storage = globalThis.localStorage, client = api)
     change: state.change?.change_id, comparison: state.comparison?.comparison_id })
   function persist() { try { savePointers(storage, pointers()) } catch { state.notice = '浏览器无法保存实验入口；仍可从后端历史实验恢复。' } }
   function go(step) { state.step = step; persist() }
-  async function action(label, fn) {
+  async function action(label, fn, persistAfter = true) {
     if (state.busy) return
     state.busy = label; state.error = null; state.notice = ''
-    try { const value = await fn(); persist(); return value }
+    try { const value = await fn(); if(persistAfter)persist(); return value }
     catch (error) { state.error = error instanceof ApiError ? { title: error.title, message: error.message, operation: label } :
-      { title: '填写内容需要检查', message: '请检查 JSON 格式及必填内容，操作未被确认为成功。', operation: label } }
+      (label==='校验测试内容' && analytics.blocked('tests.save','invalid_input'), { title: '填写内容需要检查', message: '请检查 JSON 格式及必填内容，操作未被确认为成功。', operation: label }) }
     finally { state.busy = '' }
   }
   async function history() {

@@ -45,16 +45,20 @@ class ProviderConfig(ModelConfig):
     # Explicit non-thinking mode for compatible services such as DeepSeek.
     # None preserves the provider's default and the existing request contract.
     thinking_mode: Literal['disabled'] | None = None
+    judge_output_mode: Literal['text','json_object','json_schema'] = 'text'
     # Overrides are explicit and each inherits the user default, never server env.
     role_overrides: dict[str, RoleConfig] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=30, ge=.1, le=120)
     max_calls: int = Field(default=100, ge=1, le=500, strict=True)
+    context_window_tokens: int = Field(default=32768,ge=1024,le=2000000,strict=True)
     judge_provider_session_id: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,128}$')
     judge_provider_configuration: dict | None = None
 
     @model_serializer(mode='wrap')
     def legacy_serialization(self, handler):
         data=handler(self)
+        if 'judge_output_mode' not in self.model_fields_set:data.pop('judge_output_mode',None)
+        if 'context_window_tokens' not in self.model_fields_set:data.pop('context_window_tokens',None)
         if self.judge_provider_session_id is None:
             data.pop('judge_provider_session_id',None)
             data.pop('judge_provider_configuration',None)
@@ -62,6 +66,8 @@ class ProviderConfig(ModelConfig):
 
     @model_validator(mode='after')
     def endpoint_and_roles(self):
+        if self.judge_output_mode!='text' and self.provider!='openai-compatible':
+            raise ValueError('FORMAT_MODE_UNSUPPORTED')
         if bool(self.judge_provider_session_id) != bool(self.judge_provider_configuration):
             raise ValueError('Independent Judge binding is incomplete')
         if self.judge_provider_configuration:

@@ -18,14 +18,16 @@ class CareerService:
         self.store=experiments.store
         self.career=CareerStore(self.store)
 
-    def build(self, experiment_type, baseline_run_id, retest_run_id=None, comparison_id=None, context=None, parent_evidence_id=None):
+    def build(self, experiment_type, baseline_run_id, retest_run_id=None, comparison_id=None, context=None, parent_evidence_id=None, context_mode='MANUAL'):
         # A single store transaction gives a consistent snapshot of mutable Change/
         # review allocation. Acquisition/sealed records keep their existing semantics.
         with self.store.transaction():
-            return self._build(experiment_type,baseline_run_id,retest_run_id,comparison_id,context,parent_evidence_id)
+            return self._build(experiment_type,baseline_run_id,retest_run_id,comparison_id,context,parent_evidence_id,context_mode)
 
-    def _build(self,kind,base_id,retest_id,comp_id,context,parent_id):
+    def _build(self,kind,base_id,retest_id,comp_id,context,parent_id,context_mode='MANUAL'):
         if kind not in {'AGENT_BEHAVIOR','RETRIEVAL'}: raise ValueError('Unknown experiment type')
+        if context_mode not in {'MANUAL','PROJECT_TEMPLATE'}: raise ValueError('Unknown context mode')
+        if context_mode=='PROJECT_TEMPLATE' and context is not None: raise ValueError('Choose one context source')
         ctx=ProjectContext.model_validate(context) if context is not None else None
         sources={};claims=[];missing=[]
         def read(group,identifier):
@@ -67,18 +69,31 @@ class CareerService:
         version=max(prior,default=0)+1
         limitations=['当前为有限次数离线运行，模型随机性可能影响结果。',
                      '模型服务内部版本未经验证；可比较不等于可归因，不能证明修改导致效果变化。']
-        if not ctx: missing.append('项目背景与贡献边界尚未由用户填写并确认')
+        context_origin={};context_parents=[]
+        if context_mode=='PROJECT_TEMPLATE':
+            from .career_context import project_context
+            ctx,context_origin,context_parents=project_context(kind,base,after,comp,self.store)
+            for source_key in context_parents:
+                source_group,source_id=source_key.split(':',1)
+                read(source_group,source_id)
+        if not ctx: missing.append('尚未整理项目背景与贡献记录')
         else:
-            context_key=derived('user_context',ctx.model_dump(mode='json'),[])
+            context_key=derived('project_context' if context_origin else 'user_context',ctx.model_dump(mode='json'),
+                [bkey,*([akey] if akey else []),*([ckey] if ckey else []),*context_parents] if context_origin else [])
+            if context_origin: derived('context_origin',context_origin,[context_key])
             for field in ['project_name','project_context','motivation','target_users','user_problem','why_ai',
                           'user_roles','user_contribution','system_contribution','existing_capabilities','real_users','deployed']:
-                claim('CONTEXT_'+field.upper(),str(getattr(ctx,field)),after=getattr(ctx,field),source_type='USER_ENTERED_CONTEXT',
+                claim('CONTEXT_'+field.upper(),str(getattr(ctx,field)),after=getattr(ctx,field),source_type='SYSTEM_DERIVED' if context_origin else 'USER_ENTERED_CONTEXT',
                       keys=[context_key],paths=[context_key+'#/'+field],resume=field in {'user_contribution','motivation','user_problem','target_users'})
-            if not ctx.real_users: limitations.append('用户确认当前没有真实用户，不能声明 DAU、留存或业务提升。')
+            if context_origin:
+                limitations.append('项目背景采用产品方预设；个人工作由操作记录整理，不代表用户独立开发平台或完成真实客户研究。')
+                limitations.append('本次实践没有已验证的真实用户、生产上线或业务收益证据。')
+            elif not ctx.real_users: limitations.append('用户确认当前没有真实用户，不能声明 DAU、留存或业务提升。')
             else: limitations.append('真实用户为用户自述，当前无独立用户量或业务结果证据。')
-            if not ctx.deployed: limitations.append('用户确认当前没有真实上线，不能声明上线后效果。')
-            else: limitations.append('部署为用户自述，当前无生产部署和线上效果验证证据。')
-            if not ctx.reflection_confirmed: missing.append('反思尚待用户确认')
+            if not context_origin:
+                if not ctx.deployed: limitations.append('用户确认当前没有真实上线，不能声明上线后效果。')
+                else: limitations.append('部署为用户自述，当前无生产部署和线上效果验证证据。')
+                if not ctx.reflection_confirmed: missing.append('反思尚待用户确认')
         provider=base.provider_configuration_snapshot
         host=urlparse(provider.get('base_url','')).hostname
         local=host in {'localhost','127.0.0.1','::1'}
@@ -93,6 +108,12 @@ class CareerService:
         elif not comp.comparable: limitations.append('控制条件不可比较，不能将前后指标差异表达为优化效果。')
         elif comp.comparison_completeness=='PARTIAL': limitations.append('结果仅覆盖匹配有效子集，不能声称整套 EvalSet 改善。')
         if comp:
+            trust=getattr(comp,'trust_summary',{}) if kind=='RETRIEVAL' else {}
+            if trust:
+                claim('EVALUATION_SCOPE','应评范围、有效覆盖与共同可比子集分别记录；不以通过率单独证明质量。',
+                    after=trust,source_type='COMPARISON_EVIDENCE',keys=[ckey],paths=[ckey+'#/trust_summary'])
+                if not trust.get('overall_improvement_allowed'):
+                    limitations.append('本轮存在范围、覆盖或有效性限制，不能把子集通过率变化表达为整体回答质量提升。')
             claim('COMPARABILITY','可比较与可归因是独立事实。',before=comp.comparable,after=comp.attributable,
                   source_type='COMPARISON_EVIDENCE',keys=[ckey],paths=[ckey+'#/comparable',ckey+'#/attributable'])
             raw_warnings=comp.warnings if kind=='RETRIEVAL' else comp.attribution_warnings

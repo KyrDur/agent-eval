@@ -16,9 +16,9 @@ export function createCareerWorkspace(work,rag,mode,storage=globalThis.localStor
  function selection(){const s=mode.value==='RETRIEVAL'?rag.state:work.state
   return {experiment_type:mode.value,baseline_run_id:s.baseline?.run.run_id,retest_run_id:s.retest?.run.run_id||null,comparison_id:s.comparison?.comparison_id||null}}
  return {state,restore,selection,
-  async build(context=null){return work.action('整理实验事实',async()=>{const selected=selection();if(!selected.baseline_run_id)throw new Error('Select baseline')
+  async build(context=null,contextMode='MANUAL'){return work.action('整理实验事实',async()=>{const selected=selection();if(!selected.baseline_run_id)throw new Error('Select baseline')
    const same=state.evidence?.baseline_run_id===selected.baseline_run_id && state.evidence?.experiment_type===selected.experiment_type
-   state.evidence=await client.post('/career/evidence',{...selected,context,parent_evidence_id:same?state.evidence.evidence_object_id:null});state.material=null;state.view=null;persist();await history();state.tab='Evidence';return state.evidence})},
+   state.evidence=await client.post('/career/evidence',{...selected,context,context_mode:contextMode,parent_evidence_id:same?state.evidence.evidence_object_id:null},{confirmed:!!context||contextMode==='PROJECT_TEMPLATE'});state.material=null;state.view=null;persist();await history();state.tab='Evidence';return state.evidence})},
   async generate(){return work.action('从已确认 Evidence 生成材料',async()=>{state.material=await client.post('/career/materials',{evidence_object_id:state.evidence.evidence_object_id});persist();await history()})},
   async preview(options={}){return work.action('检查叙事证据与缺口',async()=>{state.view=await client.post('/career/narrative/preview',{evidence_object_id:state.evidence.evidence_object_id,...options});return state.view})},
   async generateV2(options={}){return work.action('根据已确认的证据生成材料',async()=>{state.material=await client.post('/career/materials/v2',{evidence_object_id:state.evidence.evidence_object_id,...options});await loadView();persist();await history()})},
@@ -26,6 +26,6 @@ export function createCareerWorkspace(work,rag,mode,storage=globalThis.localStor
   async openMaterial(id){return work.action('读取历史材料',async()=>{state.material=await client.get('/career/materials/'+id);state.evidence=await client.get('/career/evidence/'+state.material.evidence_object_id);await loadView();persist()})},
   async edit(group,section_id,text){return work.action('保存文案新版本',async()=>{state.material=await client.post('/career/materials/'+state.material.material_id+'/edit',{group,section_id,text,edit_type:'WORDING'});persist();await history()})},
   async regenerate(group,section_id){return work.action('重新生成段落',async()=>{state.material=await client.post('/career/materials/'+state.material.material_id+'/regenerate-section',{group,section_id});persist();await history()})},
-  export:(group=null)=>client.get('/career/materials/'+state.material.material_id+'/export'+(group?'?group='+encodeURIComponent(group):'')),
+  export:(group=null)=>client.get('/career/materials/'+state.material.material_id+'/export'+(group?'?group='+encodeURIComponent(group):''),{material:({case_study:'project',resume_ai:'resume',resume_general:'resume',interview:'interview',defense:'interview'})[group]||'all'}),
  }
 }

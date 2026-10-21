@@ -24,9 +24,11 @@ def normalize(e,focus,target,completions=(),schema_version='2'):
                                 claim_ids=ids,evidence_paths=paths)
     ctx=e.context
     if ctx is None: raise ValueError('Confirmed project context required')
+    template='derived:context_origin' in e.source_map
     for k in ['project_name','user_roles','motivation','target_users','user_problem','why_ai','user_contribution','system_contribution','existing_capabilities','real_users','deployed','reflection']:
         owner='AI_CODING_PLATFORM' if k=='system_contribution' else 'EXISTING_CAPABILITY' if k=='existing_capabilities' else 'USER'
-        fact(k,getattr(ctx,k),['evidence#/context/'+k],'USER_CONFIRMED',owner,'WORKBENCH',('CONTEXT_'+k.upper(),))
+        state='MISSING' if template and k in {'real_users','deployed','reflection'} else 'VERIFIED_RECORD' if template else 'USER_CONFIRMED'
+        fact(k,getattr(ctx,k),['evidence#/context/'+k],state,owner if k in {'system_contribution','existing_capabilities'} or not template else 'RECORD','WORKBENCH',('CONTEXT_'+k.upper(),))
     fact('count',e.baseline['dialog_case_count'],['evidence#/baseline/dialog_case_count'],types=('CASE_COUNT',))
     fact('decision',e.user_decision.get('reason') or e.user_decision.get('selection_reason') or '',['evidence#/user_decision'],'USER_CONFIRMED' if e.user_decision else 'MISSING','USER',types=('USER_DECISION',))
     fact('change',e.change,['evidence#/change'],types=('CHANGE',))
@@ -34,6 +36,8 @@ def normalize(e,focus,target,completions=(),schema_version='2'):
         if schema_version=='2' and c.claim_type=='USER_EXPERIMENT_CONCLUSION':
             fact('experiment_conclusion',c.value_after,[f'evidence#/claims/{i}/value_after'],'USER_CONFIRMED','USER',types=('USER_EXPERIMENT_CONCLUSION',))
     fact('comparison',e.comparison,['evidence#/comparison'],state='VERIFIED_RECORD' if e.comparison else 'MISSING',types=('COMPARABILITY',))
+    if e.comparison.get('trust_summary'):
+        fact('evaluation_scope',e.comparison['trust_summary'],['evidence#/comparison/trust_summary'],types=('EVALUATION_SCOPE',))
     for k in ['regressions','invalid_cases','human_reviews','limitations']:
         fact(k,getattr(e,k),['evidence#/'+k],types=(k.upper(),))
     selected=e.user_decision.get('selected_case_ids',[]) or e.diagnosis.get('selected_case_ids',[])
@@ -56,9 +60,11 @@ def normalize(e,focus,target,completions=(),schema_version='2'):
                   'rank_scope':row['metrics'].get('rank_scope'),'rank_cutoff':row['metrics'].get('rank_cutoff'),
                   'quality_cutoff':row['metrics'].get('quality_cutoff')} for row in rows]
             for row in rows:
-                if row['metrics'].get('rank_cutoff')!=len(row['post_rerank_results']): conflicts.append('排名截点与实际候选池不一致')
+                # Unlabelled cases have no ranking metric cutoffs. Absence is
+                # unavailable evidence, not a contradiction with the run config.
+                if row['metrics'].get('rank_cutoff') is not None and row['metrics']['rank_cutoff']!=len(row['post_rerank_results']): conflicts.append('排名截点与实际候选池不一致')
                 if len(row['results'])>run['retrieval_config']['top_k']: conflicts.append('最终返回结果超出 Top K')
-                if row['metrics'].get('quality_cutoff')!=run['retrieval_config']['top_k']: conflicts.append('质量指标截点与 Top K 不一致')
+                if row['metrics'].get('quality_cutoff') is not None and row['metrics']['quality_cutoff']!=run['retrieval_config']['top_k']: conflicts.append('质量指标截点与 Top K 不一致')
             expected=r.get('config_before') if side=='baseline' else r.get('config_after')
             if expected!=run['retrieval_config']: conflicts.append('归一化配置与原始 Run 冲突')
         change=e.change

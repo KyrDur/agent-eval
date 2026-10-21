@@ -41,6 +41,6 @@ test('Unlabeled rows and no-answer runs are not reported as successful answers',
 test('First-use next action follows real prerequisites instead of a fixed route',()=>{
  assert.equal(nextJourneyStep(null,{}).id,'setup')
  assert.equal(nextJourneyStep(ready,{}).id,'knowledge')
- assert.equal(nextJourneyStep(ready,{index:{}}).id,'chat')
+ assert.equal(nextJourneyStep(ready,{index:{}}).id,'define')
  assert.equal(nextJourneyStep(ready,{index:{},evalSet:{}}).id,'evaluate')
 })

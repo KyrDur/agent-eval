@@ -9,6 +9,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import uvicorn
 
@@ -20,6 +21,7 @@ def provider_server(port):
         def do_POST(self):
             data=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             messages=data['messages'];prompt=str(messages);model=data['model']
+            if model=='background-slow-fixture':time.sleep(1)
             tools={t['function']['name'] for t in data.get('tools',[])}
             msg={'role':'assistant','content':'OK'};finish='stop';status=200
             error=None
@@ -32,6 +34,66 @@ def provider_server(port):
                 value=re.search(r'echo-[a-f0-9]{12}',prompt).group()
                 msg.update(content=None,tool_calls=[{'type':'function','id':'probe_echo','function':{
                     'name':'echo','arguments':json.dumps({'value':value})}}]);finish='tool_calls'
+            elif 'ASSIST_KNOWLEDGE' in prompt:
+                from experiments.assist import CATEGORIES
+                msg['content']=json.dumps({'name':'本地脚本模拟知识','documents':[{'document_id':'topic_'+str(i),'title':category,'category':category,'text':'本条为本地脚本模拟规则。请核验订单，不承诺业务已完成。','applicability':'模拟店铺普通商品','exceptions':'定制商品需核验'} for i,category in enumerate(CATEGORIES)]},ensure_ascii=False)
+            elif 'ASSIST_TESTS' in prompt:
+                value=json.loads(messages[-1]['content']);offset=len(value['existing_queries']);cases=[]
+                for i in range(value['count']):
+                    doc=value['documents'][(offset+i)%len(value['documents'])]
+                    question_type=value['requested_types'][i];outside=question_type=='知识范围外'
+                    cases.append({'query':f'本地合成题 {offset+i}？','expected_answer':'资料未提供相关规则，无法确认，不编造。' if outside else doc['text'],
+                        'must_do':['说明资料不足' if outside else '说明适用条件'],'must_not_do':['不能声称已完成'],
+                        'relevant_document_ids':[] if outside else [doc['document_id']],'question_type':question_type,
+                        'source_quotes':[] if outside else [{'document_id':doc['document_id'],'quote':doc['text'][:12]}]})
+                msg['content']=json.dumps({'cases':cases},ensure_ascii=False)
+            elif 'ASSIST_EVALUATION_CHAT' in prompt:
+                value=json.loads(messages[-1]['content'])
+                msg['content']=json.dumps({'answer':f"本地脚本说明：运行结束不等于回答通过。请核对本题参考政策是否齐全。已读取 {len(value['history'])} 轮问答。",'evidence_keys':[next(iter(value['evidence']))]},ensure_ascii=False)
+            elif 'ASSIST_TRACE' in prompt:
+                value=json.loads(messages[-1]['content']);ref=next(iter(value['evidence']))
+                msg['content']=json.dumps({'facts':[{'claim':'本次本地脚本轨迹有记录','evidence_keys':[ref]}],'issues':[],'hypotheses':[],'suggestions':[{'change_type':'TOP_K_CHANGE','reason':'本地验收排序假设','evidence_keys':[ref],'verification':'同题复测','side_effects':'可能增加上下文'}],'limitations':['本地脚本不证明真实质量']},ensure_ascii=False)
+            elif 'AGENT_EVAL_LANGSMITH_JUDGE_V1' in prompt:
+                value=json.loads(messages[-1]['content']);catalog=value['sample']['fragment_catalog']
+                answer=next(f['fragment_id'] for f in catalog if f['scope']=='ANSWER')
+                dims={}
+                for dimension in ('faithfulness','conditions','relevance','actionability'):
+                    scope='RETRIEVED' if dimension=='faithfulness' else 'REFERENCE'
+                    evidence=[f['fragment_id'] for f in catalog if f['scope']==scope]
+                    dims[dimension]={'score':2,'answer_fragment_ids':[answer],
+                        'evidence_fragment_ids':evidence[:1],'reason':'Scripted acceptance only, not Judge accuracy.'}
+                if model=='trace-null-score-fixture':dims['actionability']['score']=None
+                if model=='recovery-null-fixture':
+                    dims['actionability']['score']='NA' if value.get('previous_validation_issues') else None
+                    dims['actionability']['reason']='规格事实题无行动需求。'
+                msg['content']=json.dumps({'dimensions':dims,'critical_errors':[],'error_tags':[],
+                    'task_resolved':'YES','faithful_to_available':'YES','task_failure_reasons':[],
+                    'insufficient_items':[],'reason':'Scripted acceptance only.'})
+            elif 'CALIBRATION_JUDGE_V2' in prompt:
+                value=json.loads(messages[-1]['content']);catalog=value['sample']['fragment_catalog']
+                answer=next(f['fragment_id'] for f in catalog if f['scope']=='ANSWER')
+                dims={}
+                for dimension in ('faithfulness','conditions','relevance','actionability'):
+                    scope='RETRIEVED' if dimension=='faithfulness' else 'REFERENCE'
+                    evidence=[f['fragment_id'] for f in catalog if f['scope']==scope]
+                    dims[dimension]={'score':2,'answer_fragment_ids':[answer],
+                        'evidence_fragment_ids':evidence[:1],
+                        'reason':'Scripted fragment fixture only; not real Judge quality.'}
+                msg['content']=json.dumps({'dimensions':dims,'critical_errors':[],'error_tags':[],
+                    'verdict':'PASS','task_resolved':'YES','faithful_to_available':'YES','task_failure_reasons':[],
+                    'insufficient_items':[],'reason':'Scripted local HTTP fragment fixture only.'},ensure_ascii=False)
+            elif 'CALIBRATION_JUDGE_V1' in prompt:
+                value=json.loads(messages[-1]['content']);s=value['sample']
+                dims={}
+                for dimension in ('faithfulness','conditions','relevance','actionability'):
+                    evidence=s['retrieved_evidence'] if dimension=='faithfulness' else s['reference_policy']
+                    dims[dimension]={'score':2,'answer_quotes':[s['answer']],
+                        'citations':[{'scope':'RETRIEVED' if dimension=='faithfulness' else 'REFERENCE',
+                            'evidence_id':evidence[0]['evidence_id'],'quote':evidence[0]['text']}] if evidence else [],
+                        'reason':'Scripted protocol fixture; not evidence of Judge quality.'}
+                msg['content']=json.dumps({'dimensions':dims,'critical_errors':[],'error_tags':[],
+                    'verdict':'PASS','task_resolved':'YES','faithful_to_available':'YES','task_failure_reasons':[],
+                    'insufficient_items':[],'reason':'Scripted local HTTP fixture only.'},ensure_ascii=False)
             elif 'RAG_REWRITE_V1' in prompt:
                 if model=='rag-rewrite-failed':status=503;error={'code':'rewrite_unavailable'}
                 value=json.loads(messages[-1]['content'])['query']

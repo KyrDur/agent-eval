@@ -23,13 +23,13 @@ const work = inject('workspace')
       <div v-for="(label, key) in dimensions" :key="key"><span>{{ label }} <small>{{ key }}</small></span><strong>{{ result.scores[key] }}</strong><div class="score-track"><i :style="{ width: (result.scores[key] * 100) + '%' }" /></div><small>本次门槛 {{ thresholds?.[key] ?? '见评测条件' }}</small></div>
     </div>
     <p v-else class="muted" data-testid="no-quality">{{ result.judge_status === 'NOT_REQUIRED' ? '本题按确定性规则判定，无需质量 Judge。' : '本题没有有效的四维质量评分。' }}</p>
-    <details class="conversation" open><summary>对话与回答 <span>{{ result.turn_evidence.length }} 轮 · 1 个 Case</span></summary>
+    <details class="conversation" open><summary v-track="{action:'case.details',placement:'CaseEvidence.control_01'}">对话与回答 <span>{{ result.turn_evidence.length }} 轮 · 1 个 Case</span></summary>
       <div v-for="turn in result.turn_evidence" :key="turn.turn" class="turn"><div class="user-message"><small>用户 · 第 {{ turn.turn }} 轮</small><p>{{ turn.question }}</p></div><div class="agent-message"><small>Agent 回答</small><p>{{ turn.response || '未生成可用回答' }}</p></div>
-        <details v-if="turn.tool_traces.length" class="tools"><summary>工具调用证据 · {{ turn.tool_traces.length }} 次</summary><div v-for="(trace, i) in turn.tool_traces" :key="i"><strong>{{ trace.tool_name || trace.tool || trace.name || '工具调用' }}</strong><span class="badge" :class="trace.success ? 'pass' : 'fail'">{{ trace.success ? '成功' : '失败' }}</span><pre>{{ JSON.stringify(trace, null, 2) }}</pre></div></details>
+        <details v-if="turn.tool_traces.length" class="tools"><summary v-track="{action:'case.judge',placement:'CaseEvidence.control_02'}">工具调用证据 · {{ turn.tool_traces.length }} 次</summary><div v-for="(trace, i) in turn.tool_traces" :key="i"><strong>{{ trace.tool_name || trace.tool || trace.name || '工具调用' }}</strong><span class="badge" :class="trace.success ? 'pass' : 'fail'">{{ trace.success ? '成功' : '失败' }}</span><pre>{{ JSON.stringify(trace, null, 2) }}</pre></div></details>
       </div>
     </details>
-    <button v-if="diagnose && result.final_status === 'FAIL'" class="secondary" :disabled="!!work.state.busy" @click="work.diagnose(result.case_id)">分析这个问题</button>
-    <ReviewForm v-if="runId" :result="result" :run-id="runId" />
-    <EvidenceDetails :data="result" title="查看此 Case 的原始证据" />
+    <button v-track="{action:'change.diagnose',placement:'CaseEvidence.control_03',core:true,reason:('busy')}" v-if="diagnose && result.final_status === 'FAIL'" class="secondary" :disabled="!!work.state.busy" @click="work.diagnose(result.case_id)">分析这个问题</button>
+    <ReviewForm data-analytics-location="CaseEvidence.ReviewForm.1" v-if="runId" :result="result" :run-id="runId" />
+    <EvidenceDetails data-analytics-location="CaseEvidence.EvidenceDetails.2" :data="result" title="查看此 Case 的原始证据" />
   </article>
 </template>

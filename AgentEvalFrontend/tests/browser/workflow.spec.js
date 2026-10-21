@@ -2,12 +2,16 @@ import { test, expect } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+test.use({actionTimeout:12000})
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('agenteval.experiment-mode','AGENT_BEHAVIOR'))})
 const evidence = process.env.AGENTEVAL_TEST_EVIDENCE_DIR || path.resolve('../../phase4')
 const localProviderURL = `http://127.0.0.1:${process.env.AGENTEVAL_TEST_PROVIDER_PORT || '8124'}/v1`
 
 test('Bulk user JSON import: real EvalSet, editable preview, no auto-run, preserved conditions and IDs', async ({ page, request }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: '02 Define 定义目标与测试', exact: true }).click()
+  await page.getByRole('button',{name:'使用自己的模型做实验',exact:false}).click()
+  await page.getByLabel('实验路径').selectOption('AGENT_BEHAVIOR')
+  await page.getByRole('button', { name: /测试题.*AI 出题/ }).click()
   await expect(page.getByLabel('测试题 JSON', { exact: true })).toBeVisible()
   const first = { case_id: 'refund_01', category: '退款', turns: ['我想退款'], conditions: '用户没有提供订单号',
     expected_tools: [], must_do: ['追问订单号', '说明需要核验后才能处理'], must_not_do: ['声称退款已完成', '编造订单信息'] }
@@ -41,14 +45,15 @@ test('Bulk user JSON import: real EvalSet, editable preview, no auto-run, preser
   expect(after.total).toBe(before.total)
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('用户没有提供订单号')
   await page.reload()
-  await page.getByRole('button', { name: '02 Define 定义目标与测试', exact: true }).click()
+  await page.getByRole('button', { name: /测试题.*AI 出题/ }).click()
   await expect(page.locator('.builder-card')).toHaveCount(2)
   await expect(page.locator('.builder-card').first().getByLabel('Case 标题', { exact: true })).toHaveValue('未提供订单号的退款申请')
   await page.screenshot({ path: evidence + '/json-import-restored-1440.png', fullPage: true })
 })
 async function setup(page, model = 'phase4-scripted') {
   await page.goto('/')
-  await page.getByRole('button', { name: '开始配置', exact: false }).click()
+  await page.getByRole('button', { name: '使用自己的模型做实验', exact: false }).click()
+  await page.getByLabel('实验路径').selectOption('AGENT_BEHAVIOR')
   await page.getByLabel('Base URL', { exact: true }).fill(localProviderURL)
   await page.getByLabel('Model', { exact: true }).fill(model)
   const key = randomBytes(24).toString('hex')
@@ -90,9 +95,9 @@ async function runBaseline(page) {
 
 test('Model presets and ecommerce title: editable endpoints, DeepSeek default, clean service switching', async ({ page, request }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle('智能电商 Agent 评测')
+  await expect(page).toHaveTitle(/Agent Eval/)
   await expect(page.locator('body')).toContainText('Agent Eval')
-  await page.getByRole('button', { name: '开始配置', exact: false }).click()
+  await page.getByRole('button', { name: '使用自己的模型做实验', exact: false }).click()
   await expect(page.getByRole('combobox', { name: '模型服务', exact: true })).toHaveValue('deepseek')
   await expect(page.getByLabel('Base URL', { exact: true })).toHaveValue('https://api.deepseek.com/v1')
   await expect(page.getByLabel('Model', { exact: true })).toHaveValue('deepseek-flash')
@@ -257,7 +262,7 @@ test('Real temporary tool probe failure stays FAILED with a retry message', asyn
 
 test('Welcome layout works at desktop and mobile widths without fake experiment results', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /智能电商 Agent/  })).toBeVisible()
+  await expect(page.locator('#landing-title')).toBeVisible()
   for (const width of [1366,1440,1280,390]) {
     await page.setViewportSize({ width, height: 950 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

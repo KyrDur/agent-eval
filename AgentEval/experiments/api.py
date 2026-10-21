@@ -32,6 +32,8 @@ def execute(fn,*args,**kwargs):
     except FileNotFoundError:
         raise HTTPException(404,"Artifact not found") from None
     except (ValueError,StopIteration) as error:
+        if str(error)=='LIMITED_DECISION_SCOPE_REQUIRED':
+            raise HTTPException(409,str(error)) from None
         if str(error) == 'PUBLIC_PROVIDER_ENDPOINT_NOT_ALLOWED':
             raise HTTPException(422, 'PUBLIC_PROVIDER_ENDPOINT_NOT_ALLOWED') from None
         raise HTTPException(409,"Experiment validation or lifecycle constraint rejected") from None

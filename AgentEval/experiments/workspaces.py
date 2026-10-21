@@ -21,6 +21,7 @@ from core.skill_loader import SkillManager
 from .service import ExperimentService
 from .store import JsonStore
 from .retrieval_service import RetrievalService
+from .calibration_service import CalibrationService
 
 request_service = ContextVar('anonymous_experiment_service', default=None)
 TOKEN = re.compile(r'[A-Za-z0-9_-]{43}\Z')
@@ -87,6 +88,7 @@ class WorkspaceRegistry:
                 service = ExperimentService(JsonStore(directory / 'artifacts'), manager)
                 service.providers.endpoint_validator = public_provider_endpoint
                 service.retrieval = RetrievalService(service)
+                service.calibration = CalibrationService(service)
                 self.services[identity] = service
             return self.services[identity]
 
@@ -152,6 +154,7 @@ class WorkspaceMiddleware:
                 or path.endswith('/index') or path.endswith('/test')
                 or path.endswith('/test-tools') or path.endswith('/retrieval-rewrite-preview')
                 or path.endswith('/chat-turns') or path.endswith('/retrieval-repeats'))
+            expensive = expensive or (scope['method']=='POST' and path.startswith('/experiments/calibration/') and path.endswith('/execute'))
             if expensive:
                 if registry.expensive.locked():
                     return await JSONResponse({'detail': 'WORKSPACE_BUSY'}, status_code=429)(scope, receive, send)

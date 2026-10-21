@@ -36,7 +36,7 @@ DOCS=[{'document_id':'opened','text':'已拆封商品 七天无理由退货条�
 QUERIES=['拆了还能退吗？','钱什么时候回到卡里？','包裹咋还没动？','报销的凭证怎么弄？',
          '进不去账户了怎么办？','花的钱有奖励吗？','送错地方能改吗？','买的坏了找谁？']
 CASES=[{'case_id':f'rag_{i+1}','query':q,'relevant_document_ids':[d['document_id']],
-        'expected_answer':d['text'],'source':'demo'} for i,(d,q) in enumerate(zip(DOCS,QUERIES))]
+        'expected_answer':d['text'],'source':'demo','reference_complete':True} for i,(d,q) in enumerate(zip(DOCS,QUERIES))]
 
 @pytest.fixture(scope='module')
 def fixture(tmp_path_factory):
@@ -65,6 +65,35 @@ def pair(fixture):
     c=rag.apply(c.change_id)
     b=asyncio.run(rag.run(sid,ev.retrieval_eval_set_id,run_type='RETEST',parent_run_id=a.run_id,change_id=c.change_id,verify_answers=True))
     return a,b,c
+
+def test_career_process_summary_uses_real_retrieval_comparison_without_mutating_it(fixture,pair):
+    from types import SimpleNamespace
+    from experiments.career_service import CareerService
+    rag,_,_,_,_,_=fixture
+    a,b,_=pair;comparison=rag.compare(a.run_id,b.run_id)
+    before={p:p.read_bytes() for p in rag.store.root.rglob('*.json')}
+    career=CareerService(SimpleNamespace(store=rag.store))
+    evidence=career.build('RETRIEVAL',a.run_id,b.run_id,comparison.comparison_id,context_mode='PROJECT_TEMPLATE')
+    bundle=career.generate_v2(evidence.evidence_object_id)
+    assert not bundle.lint
+    assert '逐题对比' in evidence.context.user_contribution
+    assert evidence.context.user_roles==['产品设计']
+    assert '18–24' in evidence.context.target_users
+    text='\n'.join(s.text for ss in bundle.sections.values() for s in ss)
+    assert '用户确认没有真实用户' not in text and '本次实践未验证真实用户' in text
+    assert all(p.read_bytes()==value for p,value in before.items())
+
+def test_career_process_summary_labels_saved_unapplied_retrieval_plan(fixture,pair):
+    from types import SimpleNamespace
+    from experiments.career_service import CareerService
+    rag,_,_,_,_,_=fixture;a,_,_=pair
+    proposal=rag.propose_change(a.run_id,'RERANK_TOGGLE',{**a.retrieval_config.model_dump(),'rerank':True},
+        '先验证候选排序，尚未执行复测。',['rag_1'],True)
+    career=CareerService(SimpleNamespace(store=rag.store))
+    evidence=career.build('RETRIEVAL',a.run_id,context_mode='PROJECT_TEMPLATE')
+    assert '待应用、待复测' in evidence.context.user_contribution
+    assert '运行复测' not in evidence.context.user_contribution
+    assert 'retrieval_changes:'+proposal.change_id in evidence.source_map
 
 def test_knowledge_version_immutable_and_new_revision(fixture):
     rag,_,_,_,_,_=fixture
@@ -352,7 +381,9 @@ def test_restart_missing_key_and_interrupted_run(fixture,pair):
     rag.store.put('retrieval_runs',run)
     restored=ExperimentService(JsonStore(rag.store.root),rag.experiments.skills.manager)
     RetrievalService(restored)
-    assert restored.store.get('retrieval_runs',run.run_id).status=='FAILED'
+    recovered=restored.store.get('retrieval_runs',run.run_id)
+    assert recovered.status=='PARTIAL'
+    assert recovered.answer_results==run.answer_results and recovered.case_results==run.case_results
     assert restored.providers.public(restored.providers.get(a.provider_session_id))['credential_status']=='UNAVAILABLE'
 
 def test_retrieval_api_contract_and_safe_validation(fixture):
@@ -369,3 +400,19 @@ def test_retrieval_api_contract_and_safe_validation(fixture):
     assert key not in client.post('/experiments/retrieval-runs',json={'api_key':key}).text
     assert client.get('/experiments/knowledge-indices/'+index.index_id).status_code==200
     assert client.get('/experiments/retrieval-history').status_code==200
+
+def test_answer_checkpoint_survives_interruption_during_judge(fixture,monkeypatch):
+    rag,sid,_,_,ev,_=fixture
+    sealed=[]
+    async def interrupt(provider,profile,case,answer,row,documents):
+        progress=rag.store.get('retrieval_runs',row['run_id'])
+        assert progress.status=='RUNNING'
+        assert progress.answer_results[-1].turn_evidence[-1].response==answer
+        assert progress.case_results[-1]['input_package']['current_answer']==answer
+        sealed.append(progress.answer_results[-1])
+        raise asyncio.CancelledError()
+    monkeypatch.setattr('experiments.scoring_profiles.score_grounded',interrupt)
+    result=asyncio.run(rag.run(sid,ev.retrieval_eval_set_id,verify_answers=True,scoring_profile_id='initial-evidence-v1'))
+    assert result.status=='PARTIAL' and len(sealed)==1
+    assert result.answer_results==sealed
+    assert rag.store.get('retrieval_runs',result.run_id).answer_results==sealed

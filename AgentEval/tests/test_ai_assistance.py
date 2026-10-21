@@ -37,6 +37,18 @@ def assistant_server():
                     for i in range(payload['count'])]}
                 if state['mode']=='bad_quote':data['cases'][0]['source_quotes'][0]['quote']='不在原文中的政策'
                 if state['mode']=='bad_id':data['cases'][0]['relevant_document_ids']=['invented']
+            elif 'AGENT_EVAL_LANGSMITH_JUDGE_V1' in prompt:
+                payload=json.loads(body['messages'][0]['content']);catalog=payload['sample']['fragment_catalog']
+                answer=next(f['fragment_id'] for f in catalog if f['scope']=='ANSWER')
+                data={'dimensions':{name:{'score':2,'answer_fragment_ids':[answer],
+                    'evidence_fragment_ids':[f['fragment_id'] for f in catalog if f['scope']==('RETRIEVED' if name=='faithfulness' else 'REFERENCE')][:1],
+                    'reason':'Scripted schema acceptance only.'} for name in ('faithfulness','conditions','relevance','actionability')},
+                    'critical_errors':[],'error_tags':[],'task_resolved':'YES','faithful_to_available':'YES',
+                    'task_failure_reasons':[],'insufficient_items':[],'reason':'Scripted schema acceptance only.'}
+            elif 'ASSIST_EVALUATION_CHAT' in prompt:
+                payload=json.loads(body['messages'][0]['content'])
+                data={'answer':f"记录中的证据缺口仍需核对。已读取 {len(payload['history'])} 轮问答；运行结束不代表回答通过。",'evidence_keys':[next(iter(payload['evidence']))]}
+                if state['mode']=='bad_ref':data['evidence_keys']=['invented']
             elif 'ASSIST_TRACE' in prompt:
                 evidence=json.loads(body['messages'][0]['content'])['evidence'];ref=next(iter(evidence))
                 data={'facts':[{'claim':'本次轨迹有记录','evidence_keys':[ref]}],'issues':[],

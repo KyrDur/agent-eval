@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 
 Status = Literal["PASS", "FAIL", "INVALID"]
 ExecutionStatus = Literal["SUCCESS", "FAILED", "INVALID", "UNKNOWN"]
@@ -119,16 +119,27 @@ class CaseResult(BaseModel):
     original_status: Status
     original_reason: str
     scores: dict[str, float] = Field(default_factory=dict)
+    scoring_protocol: Optional[dict[str, Any]] = None
+    evidence_evaluation: Optional[dict[str, Any]] = None
     turn_evidence: list[TurnEvidence] = Field(default_factory=list)
     hard_rule_violations: list[str] = Field(default_factory=list)
     human_final_status: Optional[Status] = None
     human_reason: Optional[str] = None
+    human_evaluation_state: Optional[str] = None
     reviewed_at: Optional[str] = None
     review_status: ReviewStatus = "NOT_REQUIRED"
     hard_rule_override: bool = False
     legacy: bool = False
     legacy_notice: Optional[str] = None
     legacy_original_results: list[dict[str, Any]] = Field(default_factory=list)
+
+    @model_serializer(mode='wrap')
+    def preserve_score_shape(self, handler):
+        data = handler(self)
+        for key in ('scoring_protocol', 'evidence_evaluation', 'human_evaluation_state'):
+            if key not in self.model_fields_set:
+                data.pop(key, None)
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -153,9 +164,17 @@ class CaseResult(BaseModel):
             if self.original_status != "INVALID" or self.scores or self.human_final_status in ("PASS", "FAIL"):
                 raise ValueError("无效执行或 Judge 不能带有效质量分或 PASS/FAIL")
         if self.judge_status == "SUCCESS":
-            quality = QualityScores(**{k: self.scores.get(k) for k in DIMENSIONS})
-            if not quality.valid or self.scores.get("overall") != quality.overall:
-                raise ValueError("质量评分缺失、非有限或越界")
+            if self.scoring_protocol is not None:
+                from experiments.calibration_models import CalibrationResult
+                value = CalibrationResult.model_validate(self.evidence_evaluation)
+                if (self.scoring_protocol.get('kind') != 'EVIDENCE_RUBRIC_V1' or self.scores
+                    or value.status != 'SUCCESS' or value.judgment is None
+                    or self.original_status != {'PASS':'PASS','FAIL':'FAIL','PENDING':'INVALID'}[value.judgment.verdict]):
+                    raise ValueError('Invalid evidence scoring result')
+            else:
+                quality = QualityScores(**{k: self.scores.get(k) for k in DIMENSIONS})
+                if not quality.valid or self.scores.get("overall") != quality.overall:
+                    raise ValueError("质量评分缺失、非有限或越界")
         if self.human_final_status is not None and (not self.human_reason or not self.human_reason.strip() or not self.reviewed_at):
             raise ValueError("人工判定需要 reason 和 reviewed_at")
         if (self.review_status == "COMPLETED") != (self.human_final_status is not None):
@@ -205,7 +224,7 @@ class CaseResult(BaseModel):
                 or self.judge_status == "FAILED" or self.evaluation_error is not None):
             raise ValueError("执行或评测无效的结果不能人工改为有效质量结论")
         return self.model_validate({**self.model_dump(), "human_final_status": status, "human_reason": reason.strip(),
-                                   "review_status": "COMPLETED",
+                                   "review_status": "COMPLETED", "human_evaluation_state": None,
                                    "hard_rule_override": self.hard_rule_override or bool(self.hard_rule_violations and status == "PASS"),
                                    "reviewed_at": datetime.now(timezone.utc).isoformat()})
 

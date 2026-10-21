@@ -22,6 +22,7 @@ def timing(text,rate):
 class Renderer:
     def __init__(self,e,v,p): self.e=e;self.v=v;self.p=p;self.f=v.facts;self.legacy=v.schema_version=='1'
     def val(self,key,default=None): return self.f[key].value if key in self.f else default
+    def from_process(self): return 'derived:context_origin' in self.e.source_map
     def section(self,sid,title,paragraphs,speech=False):
         text='\n\n'.join(t for t,refs in paragraphs)
         refs=list(dict.fromkeys(k for t,ks in paragraphs for k in ks))
@@ -32,6 +33,13 @@ class Renderer:
     def usable(self):
         comp=self.val('comparison',{})
         return bool(comp.get('comparable') and self.e.retest_run_id and not self.v.conflicts)
+    def trust_note(self):
+        trust=self.val('evaluation_scope',{})
+        if not trust:return ''
+        a=trust.get('baseline',{}).get('coverage',{});b=trust.get('retest',{}).get('coverage',{})
+        text=f"回答有效判定覆盖为 {a.get('numerator',0)}/{a.get('denominator',0)} → {b.get('numerator',0)}/{b.get('denominator',0)}；共同可比回答 {trust.get('common_subset',{}).get('count',0)} 道。"
+        if not trust.get('overall_improvement_allowed'):text+='当前结论受覆盖、范围或有效性限制，不能宣称整体回答质量提升。'
+        return text
     def result(self,brief=False):
         if not self.usable(): return '当前没有条件一致且证据完整的有效对比，不能宣称优化有效。',['comparison']
         if 'metric_mrr' not in self.f:
@@ -41,7 +49,9 @@ class Renderer:
         scope='匹配有效子集' if self.val('comparison').get('comparison_completeness')=='PARTIAL' else '本次离线样本'
         text=f"在{scope}中，首位命中率 Hit@1 从 {h['before']:.2f} 变为 {h['after']:.2f}，按固定候选池计算的 MRR 从 {m['before']} 变为 {m['after']:.2f}，对应有效标注分母分别是 {h['denominator']} 和 {m['denominator']}。"
         if not brief: text+=f"逐题比较显示 {c.get('RETRIEVAL_IMPROVED',0)} 道排名改善、{c.get('RETRIEVAL_UNCHANGED',0)} 道不变、{c.get('RETRIEVAL_REGRESSED',0)} 道退化。"
-        return text,['metric_hit_at_1','metric_mrr','transitions','comparison','acquisition']
+        note=self.trust_note()
+        if note:text+=note
+        return text,['metric_hit_at_1','metric_mrr','transitions','comparison','acquisition']+(['evaluation_scope'] if note else [])
     def discovery(self):
         if 'rank_movements' not in self.f: return '我从保存的失败案例及原始判定中定位本轮要检查的问题。',['selected','answer_before']
         ranks=self.val('rank_movements');selected=self.val('selected',[])
@@ -62,8 +72,8 @@ class Renderer:
             title=names.get(ch.get('change_type'),'检索配置')
             if ch.get('change_type')=='KNOWLEDGE_UPDATE':
                 text='本轮只更新知识版本，保留原测试题、预期行为与检索配置；实际文档变化和版本见修改证据。'
-            elif diff==['rerank']: text=f"本轮只把{title}从关闭改为开启，让模型对已召回的候选知识重新排序。"
-            elif diff==['query_rewrite']: text=f"本轮只把{title}从关闭改为开启，先改变检索使用的问题表达。"
+            elif diff==['rerank']: text=f"本轮只把{title}从{'开启' if a['rerank'] else '关闭'}改为{'开启' if b['rerank'] else '关闭'}，检验候选知识排序的变化。"
+            elif diff==['query_rewrite']: text=f"本轮只把{title}从{'开启' if a['query_rewrite'] else '关闭'}改为{'开启' if b['query_rewrite'] else '关闭'}，检验问题表达对检索的影响。"
             else: text='本轮记录的配置变化为：'+ '、'.join(f'{k}：{a[k]} → {b[k]}' for k in diff)+'。' if diff else '尚没有已生效的修改记录。'
             return text,['change','config_before','config_after']
         return '本轮修改以保存的 Skill 实际差异为准，具体规则及生效范围见修改证据。',['change']
@@ -84,7 +94,9 @@ class Renderer:
             text='本次没有运行回答评测，'+answer_note+'检索排名改善不能证明回答质量、业务效果或严格因果改善。'
         else: text='检索与回答分别解释；已采集的回答结果见评测证据，执行错误、Judge 失败和待人工复核均不能伪装成成功。' if self.e.experiment_type=='RETRIEVAL' else '结果来自离线 Agent 实验；本次未运行完整 RAG 和 Memory。'
         if not brief: text+='可比较只是控制条件检查通过；单次前后观察仍不能证明严格因果。'
-        return text,['answers','comparison','limitations']
+        note=self.trust_note()
+        if note:text+=note
+        return text,['answers','comparison','limitations']+(['evaluation_scope'] if note else [])
     def technique(self):
         if 'acquisition' not in self.f: return self.boundary()
         r=self.e.retrieval_evidence;a=self.val('config_before');b=self.val('config_after')
@@ -138,12 +150,13 @@ class Renderer:
           self.section('decision','个人判断与方案取舍',[(clean(self.val('decision')) if self.val('decision') else '尚无用户确认的修改理由。',['decision']),(roottext,['root_cause']),(alttext,['alternatives'])]),
           self.section('control','修改与验证方法',[action,(control+('匹配结果不完整，结论仅限已完成的有效子集。' if self.val('comparison',{}).get('comparison_completeness')=='PARTIAL' else ''),['change','comparison'])]),
           self.section('results','观察结果',[result]),
-          self.section('limits','结果边界',[self.boundary(),(f"当前记录有 {len(self.val('regressions'))} 个退化 Case、{len(self.val('invalid_cases'))} 个无效或缺失记录；{'有' if self.val('real_users') else '没有'}真实用户、{'已' if self.val('deployed') else '未'}上线（用户自述）。",['regressions','invalid_cases','real_users','deployed'])]),
+          self.section('limits','结果边界',[self.boundary(),(f"当前记录有 {len(self.val('regressions'))} 个退化 Case、{len(self.val('invalid_cases'))} 个无效或缺失记录；"+('本次实践未验证真实用户、生产上线或业务收益。' if self.from_process() else f"{'有' if self.val('real_users') else '没有'}真实用户、{'已' if self.val('deployed') else '未'}上线（用户自述）。"),['regressions','invalid_cases','real_users','deployed'])]),
           self.section('reflection','复盘与下一步',reflection_paragraphs),
           self.section('technical','技术证据说明',self.technical_paragraphs())]
         by_beat=dict(zip(['value','ownership','discovery','judgment','control','result','boundary','reflection'],sections[:-1]))
         return [by_beat[beat] for beat in self.p.material_orders['case_study']]+[sections[-1]]
     def resume_ai(self):
+        if self.from_process(): return self.process_resume(True)
         result,refs=self.result(True);contrib,c=self.contribution();action,a=self.action()
         emphasis={'AI_APPLICATION_PM':'将客服知识检索作为 AI 应用能力验证场景，区分检索、回答和业务结果。',
           'AI_EVALUATION_PLATFORM_PM':'以评测可信度和实验条件检查组织产品验证，区分记录完整性与因果证据。',
@@ -152,6 +165,7 @@ class Renderer:
           self.section('ai_eval','实验与结果',[(action,a),(result,refs),(self.boundary(True)[0],self.boundary(True)[1])]),
           self.section('ai_next','贡献边界与后续验证',[self.reflection(),(f"基于原有 Agent 与检索能力推进产品实践；当前{'没有' if not self.val('real_users') else '有用户自述的'}真实用户，{'尚未上线' if not self.val('deployed') else '部署为用户自述'}。",['existing_capabilities','real_users','deployed'])])]
     def resume_general(self):
+        if self.from_process(): return self.process_resume(False)
         # Resume prose selects the user-value conclusion and one experiment;
         # it does not copy the entire decision form or technical metric list.
         problem_units=sentences(self.val('user_problem'))
@@ -165,6 +179,29 @@ class Renderer:
         return [self.section('pm_problem','用户问题与项目推进',[(clean(problem),['user_problem']),self.contribution()]),
           self.section('pm_decision','决策与验证',[(action,action_refs),(outcome,result_refs)]),
           self.section('pm_reflection','下一步验证计划',[self.reflection()])]
+    def process_resume(self,ai):
+        """Concrete practice outputs; no invented adoption or independent engineering."""
+        prefix='ai' if ai else 'pm'
+        count=self.val('count')
+        problem=(f"以产品设计角色开展电商客服实践，本次题集包含 {count} 道测试题；核对检索过程与已返回结果，形成可追溯的初测记录。" if ai else
+            f"按照本次 {count} 道题的验收要求检查客服表现，将原问题、实际回答和判定依据保存在逐题记录中，用于后续复盘。")
+        action,action_refs=self.action()
+        result,result_refs=self.result(True)
+        hit=self.val('metric_hit_at_1')
+        if not ai and hit and self.usable() and hit['before'] is not None and hit['after'] is not None:
+            result=f"在 {hit['denominator']} 道有效标注题中，正确资料排在首位的比例从 {hit['before']*100:g}% 变为 {hit['after']*100:g}%；结果仅代表这次离线检索观察。"+self.trust_note()
+            result_refs=['metric_hit_at_1','comparison','answers']+(['evaluation_scope'] if self.trust_note() else [])
+        if self.val('decision'):
+            decision='依据逐题证据选择本轮修改，保存判断理由：'+clean(self.val('decision'))
+            decision_refs=['decision','selected']
+        else:
+            decision='本次已完成的工作：'+clean(self.val('user_contribution'))
+            decision_refs=['user_contribution']
+        return [self.section(prefix+'_problem','评测设计与问题分析' if ai else '验收与问题复盘',[(problem,['user_roles','count','answers']),(decision,decision_refs)]),
+            self.section(prefix+'_eval' if ai else prefix+'_decision','修改验证与观察结果',[(action,action_refs),(result,result_refs)]),
+            self.section(prefix+'_next' if ai else prefix+'_reflection','项目范围',[(
+                '个人实践项目；使用平台已有的客服、检索和评测能力。本次记录未验证实际用户规模、生产上线或业务收益。',
+                ['existing_capabilities','system_contribution','limitations'])])]
     def interviews(self):
         name=self.val('project_name');app=self.v.project_focus=='CUSTOMER_SERVICE_APP'
         opening=f'我做的项目是{name}，用电商客服场景练习如何发现 AI 问题、验证修改并解释结果。' if not app else '这次我从电商客服知识检索切入，检查哪些知识能被正确找到；客服应用需求尚待补充。'

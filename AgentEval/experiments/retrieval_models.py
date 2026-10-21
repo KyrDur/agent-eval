@@ -59,18 +59,38 @@ class RetrievalCase(InputModel):
     must_not_do: list[str] = Field(default_factory=list)
     executable_rules: list[ExecutableRule] = Field(default_factory=list)
     partition: Literal['DEBUG','HOLDOUT'] = 'DEBUG'
+    group_id: str | None = Field(default=None, min_length=1, max_length=200)
+    template_id: str | None = Field(default=None, min_length=1, max_length=200)
     context: list[dict] = Field(default_factory=list, max_length=20)
     source_chat_turn_id: str | None = None
     allow_missing_knowledge: bool = False
+    # Versioned companion metadata; absent historical fields remain absent in
+    # semantic hashes rather than acquiring invented provenance on read.
+    evidence_context: dict = Field(default_factory=dict)
+    reference_complete: bool | None = None
+    reference_completeness: dict = Field(default_factory=dict)
+    scenario_rules: dict = Field(default_factory=dict)
 
     @model_serializer(mode='wrap')
     def legacy_serialization(self,handler):
         data=handler(self)
         if not self.generation:data.pop('generation',None)
+        for key in ('group_id','template_id'):
+            if getattr(self,key) is None:data.pop(key,None)
+        for key in ('evidence_context','reference_complete','reference_completeness','scenario_rules'):
+            if key not in self.model_fields_set:data.pop(key,None)
         return data
 
     @model_validator(mode='after')
     def labels(self):
+        context=self.evidence_context
+        if context.get('source_type') not in {None,'UNKNOWN','ACTUAL','CONSTRUCTED','AI_GENERATED'}:raise ValueError('Invalid sample source type')
+        for key in ('object_ids','policy_versions'):
+            if key in context and not isinstance(context[key],dict):raise ValueError('Invalid evidence scope metadata')
+        for key in ('required_evidence','required_evidence_ids','required_reference_ids','missing_items','truncated_items','history_dependencies'):
+            if key in context and not isinstance(context[key],list):raise ValueError('Invalid evidence scope metadata')
+        for key in ('question_time','question_timezone','conversation_id','turn_id','parent_input_id','cleaning_version','semantic_mapping_version'):
+            if context.get(key) is not None and not isinstance(context[key],str):raise ValueError('Invalid evidence scope metadata')
         if not self.query.strip(): raise ValueError('Query is empty')
         if self.relevant_document_ids and self.relevant_chunk_ids:
             raise ValueError('Choose document OR chunk ground truth per Case')
@@ -90,6 +110,13 @@ class RetrievalEvalSet(Artifact):
     index_id: str
     name: str
     cases: list[RetrievalCase] = Field(min_length=1, max_length=100)
+    split_reviewed: bool = False
+
+    @model_serializer(mode='wrap')
+    def preserve_old_split(self, handler):
+        data=handler(self)
+        if 'split_reviewed' not in self.model_fields_set:data.pop('split_reviewed',None)
+        return data
 
     @model_validator(mode='after')
     def unique_ids(self):
@@ -98,6 +125,7 @@ class RetrievalEvalSet(Artifact):
         return self
 
 class RetrievalConfig(InputModel):
+    answer_prompt: str = Field(default='',max_length=16000)
     top_k: int = Field(default=3, ge=1, le=20, strict=True)
     query_rewrite: bool = Field(default=False, strict=True)
     rerank: bool = Field(default=False, strict=True)
@@ -131,11 +159,24 @@ class RetrievalRun(Artifact):
     provider_call_count: int = 0
     warnings: list[str] = Field(default_factory=list)
     runtime_end_check: dict = Field(default_factory=dict)
+    trust_schema_version: Literal['TRUSTED_RESULT_V1'] | None = None
+    experiment_identity: dict = Field(default_factory=dict)
+    input_packages: list[dict] = Field(default_factory=list)
+    sample_flow: dict = Field(default_factory=dict)
+    request_id: str | None = None
+    request_hash: str | None = None
+
+    @model_serializer(mode='wrap')
+    def preserve_historical_shape(self, handler):
+        data=handler(self)
+        for key in ('trust_schema_version','experiment_identity','input_packages','sample_flow','request_id','request_hash'):
+            if key not in self.model_fields_set:data.pop(key,None)
+        return data
 
 class RetrievalChange(Artifact):
     change_id: str = Field(default_factory=uid)
     baseline_run_id: str
-    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE']
+    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE','ANSWER_PROMPT_CHANGE']
     target_index_id: str | None = None
     target_eval_set_id: str | None = None
     reason: str = Field(min_length=1, max_length=3000)
@@ -168,6 +209,13 @@ class RetrievalComparison(Artifact):
     metrics_after: dict
     paired_metrics: dict
     answer_review_snapshot: dict = Field(default_factory=dict)
+    trust_summary: dict = Field(default_factory=dict)
+
+    @model_serializer(mode='wrap')
+    def preserve_historical_shape(self, handler):
+        data=handler(self)
+        if 'trust_summary' not in self.model_fields_set:data.pop('trust_summary',None)
+        return data
 
 class RetrievalReview(Artifact):
     review_id: str = Field(default_factory=uid)
@@ -175,3 +223,5 @@ class RetrievalReview(Artifact):
     case_id: str
     revision: int
     effective_result: CaseResult
+    reviewer: str = '工作区用户'
+    evaluation_state: str | None = None

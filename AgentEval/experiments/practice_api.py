@@ -34,6 +34,7 @@ class ConclusionInput(Input):
     decision: Literal['KEEP','REVISE','REVERT']
     reason: str = Field(min_length=1,max_length=5000)
     user_confirmed: Literal[True]
+    decision_scope: Literal['FULL_SCOPE','LIMITED_OBSERVATION'] = 'FULL_SCOPE'
 
 @router.post('/retrieval-comparisons/{identifier}/conclusions')
 def conclude(identifier:str,body:ConclusionInput): return execute(practice().conclude,identifier,**body.model_dump())

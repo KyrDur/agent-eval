@@ -2,10 +2,13 @@
 import json
 import logging
 import math
+import time
+from uuid import uuid4
 import httpx
 from types import SimpleNamespace
 from anthropic import AsyncAnthropic, APIStatusError, APITimeoutError, APIConnectionError
 from .providers import ProviderFailure, explicitly_unsupported_tools
+from .provider_trace import snapshot, operation, usage_for
 
 
 def classify(error):
@@ -24,6 +27,7 @@ class ObservedProvider:
         self.config, self._key = config, key
         self.call_count = 0
         self.observations, self.errors = [], []
+        self.call_traces=[]
         self._judge=None
         if config.judge_provider_configuration:
             if not judge_key: raise ProviderFailure('CREDENTIAL_UNAVAILABLE')
@@ -47,13 +51,19 @@ class ObservedProvider:
     def client(self,role,connection_test=False,tool_probe=False):
         resolved = self.config.resolved()[role]
         async def create(**kwargs):
+            if not hasattr(self,'call_traces'): self.call_traces=[]
+            secrets=getattr(self,'_secrets',(self._key,))
             model = resolved['model']
-            if self.call_count >= self.config.max_calls:
+            if self.call_count >= min(self.config.max_calls,getattr(self,'request_limit',self.config.max_calls)):
                 self.errors.append({'stage':role,'status':'CALL_BUDGET_EXCEEDED'})
                 raise ProviderFailure('CALL_BUDGET_EXCEEDED')
+            from .input_budget import preflight
+            budget_config=self._judge.config if role=='judge' and getattr(self,'_judge',None) else self.config
+            budget=preflight({**kwargs,'model':model,'temperature':resolved['temperature'],'max_tokens':resolved['max_tokens']},getattr(budget_config,'context_window_tokens',32768))
             if role=='judge' and getattr(self,'_judge',None):
                 self.call_count+=1
                 before=len(self._judge.observations);error_before=len(self._judge.errors)
+                trace_before=len(self._judge.call_traces)
                 try:
                     response=await self._judge.client('judge',connection_test,tool_probe).messages.create(**kwargs)
                     if any(k in json.dumps(response.model_dump(mode='json'),ensure_ascii=False) for k in getattr(self,'_secrets',(self._key,))):
@@ -63,13 +73,23 @@ class ObservedProvider:
                     if not self._judge.errors[error_before:]:self.errors.append({'stage':'judge','status':error.code})
                     raise
                 finally:
-                    self.observations.extend({**v,'provider_session_id':self.config.judge_provider_session_id} for v in self._judge.observations[before:])
+                    self.observations.extend({**snapshot(v,self._secrets)['data'],
+                        'provider_session_id':self.config.judge_provider_session_id} for v in self._judge.observations[before:])
+                    for value in self._judge.call_traces[trace_before:]:
+                        safe=snapshot(value,secrets,limit=100000)
+                        self.call_traces.append({**safe['data'],
+                            'content_redacted':bool(value.get('content_redacted')) or safe['redacted'],
+                            'provider_session_id':self.config.judge_provider_session_id})
                     self.errors.extend(self._judge.errors[error_before:])
+            started=time.monotonic()
+            inputs=None
+            call_id=str(uuid4())
             try:
                 # Explicit user snapshot always wins over literals in legacy callers.
                 kwargs.update(model=model,temperature=resolved['temperature'],
                               max_tokens=min(resolved['max_tokens'],8 if connection_test else 64)
                               if connection_test or tool_probe else resolved['max_tokens'])
+                inputs=snapshot({k:kwargs[k] for k in ('system','messages','tools','tool_choice','model','temperature','max_tokens','response_format') if k in kwargs},secrets)
                 self.call_count += 1
                 response = await self._sdk.messages.create(**kwargs)
                 payload = response.model_dump(mode='json')
@@ -111,14 +131,30 @@ class ObservedProvider:
                             or isinstance(confidence,bool) or not isinstance(confidence,(int,float))
                             or not math.isfinite(confidence) or not 0<=confidence<=1):
                         raise ProviderFailure('INVALID_RESPONSE')
+                output=snapshot({'content':payload['content'],'stop_reason':payload.get('stop_reason'),
+                    'provider_finish_reason':getattr(self._sdk,'last_finish_reason',None)},secrets)
                 self.observations.append({'stage':role,'requested_model':model,'response_model_identifier':response.model,
-                                          'response_identifier':response.id})
+                                         'response_identifier':response.id})
+                self.call_traces.append({'stage':role,'requested_model':model,'response_model_identifier':response.model,
+                    'response_identifier':response.id,'call_id':call_id,'trace_version':1,
+                    'operation':operation(role,kwargs.get('system')),'status':'SUCCESS','error':None,
+                    'latency_ms':round((time.monotonic()-started)*1000,2),
+                    'model_inputs':inputs['data'],'model_outputs':output['data'],'input_budget':budget,
+                    'input_truncated':inputs['truncated'],'output_truncated':output['truncated'],
+                    'content_redacted':inputs['redacted'] or output['redacted'],'usage':usage_for(self._sdk,response)})
                 return response
             except ProviderFailure as error:
                 code = error.code
             except Exception as error:
                 code = classify(error)
             self.errors.append({'stage':role,'status':code})
+            self.call_traces.append({'stage':role,'requested_model':model,'call_id':call_id,'trace_version':1,
+                'operation':operation(role,kwargs.get('system')),'status':'FAILED','error':code,
+                'latency_ms':round((time.monotonic()-started)*1000,2),'usage':None,
+                'model_inputs':inputs['data'] if inputs else None,
+                'model_outputs':{'provider_finish_reason':self._sdk.last_finish_reason} if getattr(self._sdk,'last_finish_reason',None) else None,
+                'input_truncated':inputs['truncated'] if inputs else False,
+                'content_redacted':inputs['redacted'] if inputs else False})
             raise ProviderFailure(code) from None
         return SimpleNamespace(messages=SimpleNamespace(create=create))
 

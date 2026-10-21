@@ -22,7 +22,8 @@ def pipeline_snapshot(config):
             'rerank':{'model_configuration':profile,'prompt_version':'1','prompt_hash':text_hash(RERANK_PROMPT),
                       'failure_policy':'INVALID_NO_FALLBACK','scoring':'LLM_0_TO_1'},
             'answer':{'runtime':'GROUNDED_SINGLE_AGENT_V1','model_configuration':profile,
-                      'prompt_version':'1','prompt_hash':text_hash(ANSWER_PROMPT)},
+                      'builtin_prompt_version':'1','builtin_prompt_hash':text_hash(ANSWER_PROMPT),
+                      'effective_prompt_source':'retrieval_config.answer_prompt_or_builtin'},
             'judge':config.resolved()['judge']}
 
 async def json_call(provider, prompt, data):
@@ -69,43 +70,65 @@ async def retrieve_context(knowledge,index,provider,query,config,pipeline,contex
          'query_rewrite_enabled':config.query_rewrite,'top_k':config.top_k,'status':'SUCCESS','error':None,
          'rewrite_status':'NOT_REQUIRED','rerank_status':'NOT_REQUIRED','pre_rerank_results':[],
          'post_rerank_results':[],'results':[],'rewrite_config':pipeline['rewrite'],'reranker_config':pipeline['rerank']}
+    row['diagnostic_version']=1
+    row['rerank_enabled']=config.rerank
+    row['steps']=[]
+    active=None;step_started=None
+    def begin(name):
+        nonlocal active,step_started
+        active={'operation':name,'status':'RUNNING','latency_ms':None,'error':None}
+        row['steps'].append(active);step_started=time.monotonic()
+    def end():
+        active.update(status='SUCCESS',latency_ms=round((time.monotonic()-step_started)*1000,2))
     try:
         if config.query_rewrite:
+            begin('QUERY_REWRITE')
             row['rewrite_status']='FAILED'
             search_query=await rewrite(provider,search_query)
             row.update(effective_query=search_query,rewrite_status='SUCCESS')
+            end()
+        else: row['steps'].append({'operation':'QUERY_REWRITE','status':'SKIPPED','latency_ms':None,'error':None})
+        begin('RETRIEVAL')
         items=await asyncio.to_thread(knowledge.search,index,search_query,config.candidate_pool_size)
         row['pre_rerank_results']=items
+        active['result_count']=len(items);end()
         if config.rerank:
+            begin('RERANK')
             row['rerank_status']='FAILED'
             items=await rerank(provider,search_query,items)
             row['rerank_status']='SUCCESS'
+            end()
+        else: row['steps'].append({'operation':'RERANK','status':'SKIPPED','latency_ms':None,'error':None})
         row['post_rerank_results']=items
         row['results']=items[:config.top_k]
     except EmbeddingFailure as error: row.update(status='INVALID',error=str(error))
     except ProviderFailure as error: row.update(status='INVALID',error=error.code)
     except Exception: row.update(status='INVALID',error='RETRIEVAL_EXECUTION_FAILED')
+    if row['status']!='SUCCESS' and active and active['status']=='RUNNING':
+        active.update(status='FAILED',error=row['error'],latency_ms=round((time.monotonic()-step_started)*1000,2))
     row['latency_ms']=(time.monotonic()-started)*1000
     return row
 
-async def grounded_answer(provider,query,results,history=None):
+async def grounded_answer(provider,query,results,history=None,prompt=None):
     context={'query':query,'retrieved_knowledge':results}
     if history: context['conversation_history']=history
-    response=await provider.client('general').messages.create(system=ANSWER_PROMPT,
+    response=await provider.client('general').messages.create(system=prompt or ANSWER_PROMPT,
         messages=[{'role':'user','content':json.dumps(context,ensure_ascii=False)}])
     return extract_text_content(response.content)
 
-async def evaluate_answer(provider,case,retrieval,config):
+async def evaluate_answer(provider,case,retrieval,config,scoring_profile=None,reference_documents=None,answer_prompt=None,answer_checkpoint=None):
+    from .trusted_results import freeze_input
     class GroundedAgent:
         async def run(self,req):
             evidence={'tool_name':'frozen_retrieval','success':retrieval['status']=='SUCCESS',
                 'input':{'query':retrieval['effective_query'],'top_k':retrieval['top_k']},
                 'output':retrieval['results'],'index_id':retrieval['index_id']}
             if retrieval['status']!='SUCCESS':
-                return SimpleNamespace(response='',execution_status='FAILED',execution_error='RETRIEVAL_INVALID',
+                return SimpleNamespace(response='',execution_status='FAILED',execution_error=retrieval.get('error') or 'RETRIEVAL_INVALID',
                                        tool_traces=[evidence],tools_used=[])
             try:
-                response=await grounded_answer(provider,req.message,retrieval['results'],case.context)
+                from .evidence_policy import selected_history
+                response=await grounded_answer(provider,req.message,retrieval['results'],selected_history(case),answer_prompt)
             except ProviderFailure as error:
                 return SimpleNamespace(response='',execution_status='FAILED',execution_error=error.code,
                                        tools_used=['frozen_retrieval'],tool_traces=[evidence])
@@ -116,7 +139,44 @@ async def evaluate_answer(provider,case,retrieval,config):
                               must_do=[*case.must_do,*([f'参考答案：{case.expected_answer}'] if case.expected_answer else [])],
                               must_not_do=case.must_not_do,executable_rules=case.executable_rules,
                               source='platform_preset' if case.source=='demo' else case.source)
+    if scoring_profile:
+        from evaluation.models import CaseResult, TurnEvidence
+        from evaluation.rules import violations
+        from .scoring_profiles import score_grounded, scoring_identity
+        started=time.monotonic()
+        response=await GroundedAgent().run(SimpleNamespace(message=case.query))
+        retrieval['input_package']=freeze_input(case,retrieval,response.response,
+            reference_documents or [],retrieval.get('run_id'))
+        turn=TurnEvidence(turn=1,question=case.query,response=response.response,
+            execution_status=response.execution_status,execution_error=response.execution_error,
+            tools_used=response.tools_used,tool_traces=response.tool_traces,
+            latency_ms=(time.monotonic()-started)*1000)
+        common=dict(case_id=case.case_id,case=answer_case,execution_status=turn.execution_status,
+            turn_evidence=[turn],scoring_protocol=scoring_identity(scoring_profile))
+        if answer_checkpoint:
+            answer_checkpoint(CaseResult(**common,judge_status='NOT_RUN',original_status='INVALID',original_reason='回答已封存，评分尚未完成。'))
+        if turn.execution_status!='SUCCESS':
+            return CaseResult(**common,judge_status='NOT_RUN',original_status='INVALID',original_reason='回答未形成有效输出。')
+        failures=violations(answer_case,[turn])
+        if failures:
+            return CaseResult(**common,judge_status='NOT_REQUIRED',original_status='FAIL',
+                hard_rule_violations=failures,original_reason='；'.join(failures))
+        result=await score_grounded(provider,scoring_profile,case,turn.response,retrieval,reference_documents or [])
+        if result.status!='SUCCESS' or result.judgment is None:
+            return CaseResult(**common,judge_status='NOT_RUN' if result.status=='NOT_RUN' else 'FAILED',judge_error=result.error or result.status,
+                original_status='INVALID',original_reason='证据评分未完成，不能形成质量结论。',
+                evidence_evaluation=result.model_dump(mode='json'))
+        judgment=result.judgment
+        return CaseResult(**common,judge_status='SUCCESS',
+            original_status={'PASS':'PASS','FAIL':'FAIL','PENDING':'INVALID'}[judgment.verdict],
+            original_reason=judgment.reason,evidence_evaluation=result.model_dump(mode='json'))
     evaluator=EndToEndEvaluator(GroundedAgent(),None,'unused-memory-placeholder',config=EvaluationConfig.model_validate(config))
     await evaluator._judge._client.close()  # Constructor client never acquires a response.
     evaluator._judge=LLMJudge(provider.client('judge'),provider.config.resolved()['judge']['model'])
-    return (await evaluator._evaluate_dialog_case(answer_case,0))[0]
+    result=(await evaluator._evaluate_dialog_case(answer_case,0))[0]
+    retrieval['input_package']=freeze_input(case,retrieval,
+        result.turn_evidence[-1].response if result.turn_evidence else None,
+        reference_documents or [],retrieval.get('run_id'))
+    # Legacy 0..1 scores stay intact; the trust companion exposes missing or
+    # inapplicable evidence and excludes these events from v2 quality claims.
+    return result

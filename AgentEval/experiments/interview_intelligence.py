@@ -17,7 +17,7 @@ def questions(r):
         metric_answer='本次不是检索排名实验；回答以有效 Case 为统计单位，意图评测另列。';metric_refs=['answer_before','answer_after']
     decision=''.join(sentences(r.val('decision'))[:2]) if r.val('decision') else '尚缺少用户确认的选择理由。'
     rows=[
-      ('产品价值','为什么做这个项目，用户是谁？',[(r.val('motivation'),['motivation']),('这个工作台面向'+clean(r.val('target_users')),['target_users'])],['用户原本如何解决这个问题？有没有访谈证据？'],['用户背景为本人确认，尚无独立用户研究。']),
+      ('产品价值','为什么做这个项目，用户是谁？',[(r.val('motivation'),['motivation']),('这个工作台面向'+clean(r.val('target_users')),['target_users'])],['用户原本如何解决这个问题？有没有访谈证据？'],['背景来自产品预设，尚无独立用户研究。' if r.from_process() else '用户背景为本人确认，尚无独立用户研究。']),
       ('产品价值','为什么需要 AI，是否有更简单的方案？',[(r.val('why_ai'),['why_ai'])],['关键词检索是否足够？'],['尚缺少非 AI 方案的对照证据。']),
       ('技术理解','本次真实执行的链路是什么？',[(chain,chain_refs)],['为什么选择这个 Embedding 和模型？'],['模型选择的个人取舍和后端身份验证尚不完整。']),
       ('技术理解','重排具体改变了什么？' if r.legacy else '本轮修改具体改变了什么？',[r.action()],['候选召回失败时重排还能解决吗？'],['重排针对已有候选排序，不能自动补回缺失知识。']),
@@ -27,10 +27,10 @@ def questions(r):
       ('优化决策','为什么优先处理这个问题？',[(decision,['decision']),r.discovery()],['怎样判断它值得优先处理？'],[]),
       ('优化决策','你认为根因是什么？',[(('待验证假设：'+str(r.val('root_cause'))) if r.f['root_cause'].evidence_state=='INFERENCE' else '尚缺少可验证的回答依据；当前只有排序现象，根因仍待验证。',['root_cause'])],['用哪组对照排除其他原因？'],['没有根因对照验证记录。']),
       ('优化决策','为什么没有先用其他方案？',[(str(r.val('alternatives')),['alternatives'])],['为何接受成本和等待时间风险？'],['没有记录时请补充真实取舍，不能代写已经比较过方案。'] if r.f['alternatives'].evidence_state=='MISSING' else []),
-      ('个人贡献','你、Codex 和原仓库分别做了什么？',[r.contribution(),(clean(sentences(r.val('existing_capabilities'))[0]),['existing_capabilities'])],['举一个你亲自作出的产品判断？'],['个人工作为用户确认；工程实现不能归到本人手写。']),
+      ('个人贡献','你、Codex 和原仓库分别做了什么？',[r.contribution(),(clean(sentences(r.val('existing_capabilities'))[0]),['existing_capabilities'])],['举一个你亲自作出的产品判断？'],['个人工作由操作记录整理；平台工程实现不计作本人手写。' if r.from_process() else '个人工作为用户确认；工程实现不能归到本人手写。']),
       ('个人贡献','你本人的关键判断有哪些证据？',[(decision,['decision'])],['没有你，验收标准会缺少什么？'],['反事实问题尚无独立验证，不能自动宣称不可替代。']),
       ('结果与复盘','改善多少，分母是什么？',[r.result()],['这个指标能说明业务收益吗？'],['有限离线样本不代表线上效果，也不是因果证明。']),
-      ('结果与复盘','有没有退化、无效结果和真实用户？',[(f"所选证据记录 {len(r.val('regressions'))} 个退化 Case、{len(r.val('invalid_cases'))} 个无效或缺失记录。用户确认{'有' if r.val('real_users') else '没有'}真实用户，{'已' if r.val('deployed') else '未'}上线。",['regressions','invalid_cases','real_users','deployed'])],['扩大样本以后是否仍然成立？'],['用户与部署状态为自述。']),
+      ('结果与复盘','有没有退化、无效结果和真实用户？',[(f"所选证据记录 {len(r.val('regressions'))} 个退化 Case、{len(r.val('invalid_cases'))} 个无效或缺失记录。"+('本次实践未验证真实用户或生产上线。' if r.from_process() else f"用户确认{'有' if r.val('real_users') else '没有'}真实用户，{'已' if r.val('deployed') else '未'}上线。"),['regressions','invalid_cases','real_users','deployed'])],['扩大样本以后是否仍然成立？'],['没有真实用户和部署验证记录。' if r.from_process() else '用户与部署状态为自述。']),
       ('结果与复盘','下一步怎么验证，重来一次会怎样？',[(str(r.val('interpretation')),['interpretation'])],['重复次数、回答验证和上线门槛怎么定？'],['计划不是已完成步骤；仍需后续实验。']),
     ]
     result=[]

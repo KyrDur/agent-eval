@@ -11,7 +11,12 @@ while chunks use NFKC/lowercase/whitespace normalization and an overlapping
 character window. Chunk ID hashes document ID + index + complete normalized text
 hash. Chunk snapshot hashes configuration and complete chunk records.
 
-The local `sha256-lexical-bigram-v1` model embeds English words and character
+The default is local Chroma / ONNX `all-MiniLM-L6-v2`, 384-dimensional semantic
+embeddings on CPU. Its public model is loaded ahead of indexing and its identity
+is frozen in the index. An unavailable model fails explicitly; it is not silently
+replaced with another embedding implementation.
+
+The optional `sha256-lexical-bigram-v1` model embeds English words and character
 bigrams into 1024 buckets, then normalizes L2. This is lexical retrieval, not a
 pretrained semantic neural model. Its version, source identity, dimension,
 normalization, cosine distance and index generation are public snapshots.
@@ -56,23 +61,27 @@ Optional grounded answers are one fixed-prompt knowledge Agent, using only the
 Run's actual returned chunks; they are not the original online multi-Agent stack.
 Provider credential remains in the existing process vault. No server/environment
 key fallback, disk key, key-derived fingerprint or new credential architecture.
-The unchanged Phase 2 evaluator applies execution validity → hard rule → four
-dimension Judge thresholds → Human Review. Answer and retrieval metrics remain
+The selected scoring profile and protocol are frozen with the run. Execution and
+scoring validity are checked before publishing quality statistics; evidence checks,
+dimension scores, original decisions and human reviews remain separate. Answer and retrieval metrics remain
 separate. Reviews append immutable evidence and keep original results; an existing
 Comparison is immutable and must be recreated for a new review revision.
 
 ## Single-variable experiment
 
-Only TOP_K_CHANGE, QUERY_REWRITE_TOGGLE, RERANK_TOGGLE are supported. Explicit
-reason, selected acquired Cases, human confirmation and exactly one changed field
-are required. Apply freezes the authorized Retest configuration; actual readback
+TOP_K_CHANGE, QUERY_REWRITE_TOGGLE, RERANK_TOGGLE, ANSWER_PROMPT_CHANGE and
+KNOWLEDGE_UPDATE are supported. A saved experiment purpose, selected acquired
+Cases, human confirmation and exactly one permitted intervention are required.
+The UI can prepare the experiment purpose from settings; it labels this as a plan,
+not an independently verified root cause. Apply freezes the authorized Retest configuration; actual readback
 becomes observed_diff. Nothing mutates global online retrieval settings.
 
 Retest freezes EvalSet, Knowledge, chunk, embedding, index, cache, implementation,
 provider roles, query-rewrite/rerank prompt parameters, execution order, answer
 Agent and Judge protocol. The declared toggle/Top K is the sole permitted diff.
-Knowledge update requires a new Baseline. No chunk/embedding/prompt/knowledge
-intervention is allowed. Comparison reports control reasons, completeness,
+An answer-prompt change holds the scoring protocol fixed. A knowledge-only update
+requires a newer version of the same dataset, with unchanged chunking and embedding
+identity; incompatible labels or other control drift are rejected. Comparison reports control reasons, completeness,
 matched pairs and separate answer transitions. Attribution remains false with
 single-run and unknown external backend revision limitations.
 
@@ -84,11 +93,14 @@ All routes use `/experiments` and the existing store/envelope/vault:
 - GET knowledge-indices/{id}
 - POST/GET retrieval-evalsets
 - POST/GET retrieval-runs; POST retrieval-runs/{id}/reviews
+- POST retrieval-run-tasks submits a background run; GET retrieval-runs/{id}
+  reads progress and saved results without restarting the run
 - POST/GET retrieval-changes; POST retrieval-changes/{id}/apply
 - POST/GET retrieval-comparisons
 - POST retrieval-rewrite-preview (not a confirmed/applied Change)
 - GET retrieval-history (stable EvalSet identity and chronological Run summaries)
 
 Text/.txt/.md upload is converted by the browser to validated document JSON.
-There are no PDF, shared online collection, commercial embedding, query cache,
-Knowledge rollback, login, multi-tenant or Phase 5 material-generation features.
+PDF import, commercial embedding APIs and query caching are not part of this path.
+Public deployments use isolated anonymous workspaces. Career materials and local
+copyable AI prompts are separate features; they never rewrite saved run results.

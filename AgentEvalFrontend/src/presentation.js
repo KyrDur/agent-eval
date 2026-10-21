@@ -45,7 +45,7 @@ export function sortPairs(pairs) {
 export const terminal = status => ['COMPLETE', 'PARTIAL', 'FAILED'].includes(status)
 export function savePointers(storage, source) {
   const allowed = ['session', 'evalSet', 'baseline', 'retest', 'decision', 'change', 'comparison']
-  const data = { step: ['welcome','chat','knowledge','setup','define','evaluate','improve','compare','career'].includes(source.step) ? source.step : 'welcome' }
+  const data = { step: ['welcome','learning','chat','knowledge','setup','define','evaluate','improve','compare','calibration','operations','career'].includes(source.step) ? source.step : 'welcome' }
   for (const key of allowed) if (typeof source[key] === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(source[key])) data[key] = source[key]
   storage.setItem('agenteval.workspace.v1', JSON.stringify(data))
 }

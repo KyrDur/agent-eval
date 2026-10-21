@@ -1,5 +1,7 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import {analytics} from '../analytics.js'
+import { computed, ref, watch, useAttrs } from 'vue'
+const attrs=useAttrs()
 const props=defineProps({ data: [Object, Array], title: { type: String, default: '实验详情 · Evidence' }, copyable: {type:Boolean,default:false} })
 const json=computed(()=>JSON.stringify(props.data,null,2) || '')
 const copying=ref(false),copied=ref(false),notice=ref('')
@@ -9,7 +11,7 @@ async function copy(){
   copying.value=true;copied.value=false;notice.value=''
   try{
     await navigator.clipboard.writeText(json.value)
-    copied.value=true;notice.value='完整原始轨迹 JSON 已复制。'
+    analytics.record('copy_success',{action:'evidence.copy',placement:attrs['data-analytics-location']||'EvidenceDetails.control_02'});copied.value=true;notice.value='已保存的轨迹 JSON 已复制。'
   }catch{
     notice.value='无法访问剪贴板，请选中下方 JSON 手动复制。'
   }finally{copying.value=false}
@@ -17,8 +19,8 @@ async function copy(){
 </script>
 <template>
   <details class="evidence">
-    <summary>{{ title }} <span>高级信息</span></summary>
-    <div class="evidence-toolbar"><p class="muted">以下为 Python API 返回的原始证据，仅供核验。</p><button v-if="copyable" type="button" class="secondary" :aria-label="`${title} · 复制完整 JSON`" :disabled="copying || !json" @click="copy">{{copying?'复制中…':copied?'✓ 已复制':'复制 JSON'}}</button></div>
+    <summary v-track="{action:'evidence.details',placement:'EvidenceDetails.control_01'}">{{ title }} <span>高级信息</span></summary>
+    <div class="evidence-toolbar"><p class="muted">以下为 Python API 返回的原始证据，仅供核验。</p><button v-track="{action:'evidence.copy',placement:attrs['data-analytics-location']||'EvidenceDetails.control_02'}" v-if="copyable" type="button" class="secondary" :aria-label="`${title} · 复制完整 JSON`" :disabled="copying || !json" @click="copy">{{copying?'复制中…':copied?'✓ 已复制':'复制 JSON'}}</button></div>
     <p v-if="notice" class="copy-status" :class="{'copy-failed':!copied}" role="status">{{notice}}</p>
     <pre>{{json}}</pre>
   </details>

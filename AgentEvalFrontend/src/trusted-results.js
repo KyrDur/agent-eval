@@ -1,0 +1,8 @@
+export const checkLabels={PASS:'通过',FAIL:'不通过',EVIDENCE_INSUFFICIENT:'证据不足',NOT_APPLICABLE:'本题不适用',NOT_CHECKED:'未检查',EXECUTION_FAILED:'执行失败',NOT_RUN:'尚未执行'}
+export const taskLabels={COMPLETED:'任务完成',UNRESOLVED:'未解决',WAITING_CLARIFICATION:'待澄清',UNKNOWN:'无法确认'}
+export const behaviorLabels={ANSWER:'根据政策回答',ANSWERED:'已按政策回答',CLARIFIED:'已澄清',REFUSED_OR_ESCALATED:'合理拒答或转交',CLARIFY:'合理澄清',HANDOFF:'转交处理',REFUSE:'合理拒答',UNKNOWN:'无法确认',CORRECT_ANSWER:'正确回答',REASONABLE_CLARIFICATION:'合理澄清',REASONABLE_REFUSAL:'合理拒答',REASONABLE_HANDOFF:'合理转交',INCORRECT:'错误行为'}
+export const stageLabels={raw_records:'原始记录',deduplicated:'去重后',in_scope:'按声明范围纳入',evidence_checked:'证据检查可用',expected_evaluation:'应评事件',received:'收到唯一对应结果',valid_binary_decision:'有效 PASS / FAIL'}
+export const restrictionLabels={CONTROL_CONDITIONS_CHANGED:'两次运行的条件不同',RESULT_RECONCILIATION_INCOMPLETE:'部分结果没有和题目完整对应',DECLARED_SCOPE_CHANGED:'两次检查的题目不同',EVALUATION_MODE_CHANGED:'评测模式改变',VALID_DECISION_COVERAGE_DECLINED:'修改后能判断的题变少了',NOT_ALL_EXPECTED_SAMPLES_HAVE_VALID_DECISIONS:'部分题目还无法判断',ANSWER_QUALITY_NOT_EVALUATED:'未检查回答质量',ANSWER_REGRESSIONS_REQUIRE_REVIEW:'有些回答变差了，需要再看看'}
+export const sourceLabels={UNKNOWN:'来源未知',ACTUAL:'实际交互',CONSTRUCTED:'模拟题',AI_GENERATED:'AI 生成题'}
+export function ratioText(r){return !r||!r.denominator||r.value==null?'不可计算（尚无可用记录）':`${r.numerator} / ${r.denominator} · ${(r.value*100).toFixed(1)}%`}
+export function comparisonMessage(t){if(!t)return '这份历史比较没有保存完整的检查范围，请逐题核对。';return t.overall_improvement_allowed?'两次检查的题目和有效结果都完整。先看变差的题，再决定这个改法值不值得留。一次结果还不能说明以后也会这样。':'还不能判断整体有没有变好：'+t.restriction_reasons.map(v=>restrictionLabels[v]||v).join('；')+'。不能只看剩下的题，就说整体变好了。'}

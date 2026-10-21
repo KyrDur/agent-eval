@@ -17,7 +17,7 @@ TYPES=('常规','口语','边界','多条件','知识范围外')
 
 class AssistDraft(Artifact):
     draft_id: str
-    kind: Literal['KNOWLEDGE','TESTS','TRACE']
+    kind: Literal['KNOWLEDGE','TESTS','TRACE','EVALUATION_CHAT']
     request_hash: str
     provider_session_id: str
     provider_configuration: dict
@@ -26,6 +26,7 @@ class AssistDraft(Artifact):
     content: dict
     provider_observations: list[dict]
     provider_call_count: int
+    usage: dict | None = None
     status: Literal['DRAFT'] = 'DRAFT'
 
 class KnowledgeItem(Input):
@@ -137,7 +138,9 @@ class AssistService:
             draft=AssistDraft(draft_id=request_id,kind=kind,request_hash=request_hash,
                 provider_session_id=session_id,provider_configuration=provider.config.model_dump(),
                 sources=sources,evidence_hash=digest(sources),content=content,
-                provider_observations=provider.observations,provider_call_count=provider.call_count)
+                provider_observations=provider.observations,provider_call_count=provider.call_count,
+                usage={'known_total_tokens':sum(t['usage']['total_tokens'] for t in provider.call_traces if t.get('usage') and t['usage'].get('total_tokens') is not None),
+                    'unknown_usage_requests':sum(not t.get('usage') or t['usage'].get('total_tokens') is None for t in provider.call_traces)})
             with self.store.transaction():return self.store.put('ai_drafts',draft)
         finally:
             if provider:await provider.close()
@@ -228,15 +231,43 @@ class AssistService:
                 if pair.get(side)==refs[side]['retrieval']:
                     pair[side]={'evidence_reference':side+'.retrieval'}
             refs['comparison']['pair']=pair
+        # Raw calls stay on the frozen Run. Diagnostics receive call identity and
+        # status, not repeated full system prompts and recursively embedded inputs.
+        def compact(value):
+            if isinstance(value,dict):
+                return {k:({'available_on_source_run':True,'content_hash':digest(v)} if k in {'model_inputs','model_outputs'} else compact(v)) for k,v in value.items()}
+            if isinstance(value,list):return [compact(v) for v in value]
+            return value
+        refs=compact(refs)
         if len(json.dumps(refs,ensure_ascii=False))>80000:raise ProviderFailure('AI_INPUT_TOO_LARGE')
         return refs
+
+    @staticmethod
+    def diagnostic_sources(sources):
+        """Send the evidence needed for diagnosis; retain full frozen sources on draft."""
+        result={}
+        for name,value in sources.items():
+            if name=='comparison':
+                pair=value['pair']
+                result[name]={k:v for k,v in value.items() if k!='pair'}
+                result[name]['pair']={k:v for k,v in pair.items() if k not in {'baseline','retest','baseline_answer','retest_answer'}}
+            else:
+                row=value.get('retrieval') or {};answer=value.get('effective_answer') or {}
+                result[name]={k:v for k,v in value.items() if k not in {'retrieval','effective_answer'}}
+                result[name]['retrieval']={k:v for k,v in row.items() if k in {'case_id','query','effective_query','status','error','steps','results','metrics','retrieval_status','provider_observations'}}
+                package=row.get('input_package') or {}
+                result[name]['evidence_boundary']={k:package.get(k) for k in ('check','missing_items','truncated_items','item_checks','reference_complete')}
+                result[name]['effective_answer']={k:v for k,v in answer.items() if k in {'case_id','original_status','final_status','original_reason','human_reason','human_evaluation_state','hard_rule_violations','execution_status','judge_status','scores'}}
+                result[name]['effective_answer']['turn_evidence']=[{k:v for k,v in t.items() if k in {'turn','question','response','execution_status','execution_error','tools_used'}} for t in answer.get('turn_evidence',[])]
+        result['input_selection']={'protocol':'DIAGNOSTIC_PROJECTION_V1','raw_calls_and_duplicate_rows':'available on frozen run; omitted from this model input'}
+        return result
 
     async def trace(self,request_id,provider_session_id,case_id,run_id=None,comparison_id=None):
         sources=self.trace_sources(case_id,run_id,comparison_id)
         async def generate(provider):
             try:
                 result=TraceOutput.model_validate(await json_call(provider,TRACE_PROMPT,
-                    {'allowed_evidence_keys':list(sources),'evidence':sources}))
+                    {'allowed_evidence_keys':list(sources),'evidence':self.diagnostic_sources(sources)}))
                 for row in [*result.facts,*result.issues,*result.hypotheses,*result.suggestions]:
                     if not set(row.evidence_keys)<=sources.keys():raise ValueError()
                 return result.model_dump()

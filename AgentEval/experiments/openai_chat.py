@@ -37,13 +37,19 @@ class ChatCompletionClient:
         self._config,self._key=config,key
         self._http=httpx.AsyncClient(timeout=config.timeout_seconds,trust_env=False,follow_redirects=False)
         self.messages=self
+        self.last_usage=None
+        self.last_finish_reason=None
 
     async def create(self,**kwargs):
+        self.last_usage=None
+        self.last_finish_reason=None
         body={'model':kwargs['model'],'temperature':kwargs['temperature'],
               self._config.completion_token_parameter:kwargs['max_tokens'],
               'messages':chat_messages(kwargs['messages'],kwargs.get('system')),'stream':False,'n':1,'store':False}
         if self._config.thinking_mode is not None:
             body['thinking'] = {'type': self._config.thinking_mode}
+        if kwargs.get('response_format') is not None:
+            body['response_format']=kwargs['response_format']
         if kwargs.get('tools'):
             body['tools']=[{'type':'function','function':{'name':t['name'],'description':t['description'],
                            'parameters':t['input_schema']}} for t in kwargs['tools']]
@@ -54,6 +60,11 @@ class ChatCompletionClient:
                                       headers={'Authorization':'Bearer '+self._key},json=body)
         if response.status_code>=400:
             if response.status_code in {400,422}:
+                if 'response_format' in body:
+                    try: detail=response.json().get('error',{})
+                    except (ValueError,AttributeError):detail={}
+                    if isinstance(detail,dict) and (detail.get('param') in {'response_format','response_format.json_schema'} or detail.get('code') in {'unsupported_response_format','json_schema_not_supported'}):
+                        raise ProviderFailure('FORMAT_MODE_UNSUPPORTED')
                 try:unsupported=explicitly_unsupported_tools(response.json())
                 except ValueError:unsupported=False
                 if unsupported:raise ProviderFailure('TOOL_CALL_UNSUPPORTED')
@@ -69,6 +80,7 @@ class ChatCompletionClient:
                 or not isinstance(data.get('choices'),list) or len(data['choices'])!=1):
             raise ProviderFailure('INVALID_RESPONSE')
         choice=data['choices'][0]
+        self.last_finish_reason=choice.get('finish_reason')
         message=choice.get('message',{})
         if (message.get('role')!='assistant' or choice.get('finish_reason') not in {'stop','length','tool_calls'}
                 or message.get('refusal')):
@@ -88,9 +100,12 @@ class ChatCompletionClient:
             args=json.loads(call['function']['arguments'])
             if not isinstance(args,dict):raise ProviderFailure('INVALID_RESPONSE')
             content.append({'type':'tool_use','id':call['id'],'name':call['function']['name'],'input':args})
+        usage=data.get('usage')
+        self.last_usage=({'input_tokens':usage['prompt_tokens'],'output_tokens':usage['completion_tokens']}
+            if isinstance(usage,dict) and all(type(usage.get(k)) is int and usage[k]>=0 for k in ('prompt_tokens','completion_tokens')) else None)
         # Message is the internal contract only; no Anthropic request is made.
         return Message.model_validate({'id':data['id'],'type':'message','role':'assistant','model':data['model'],
-                    'content':content,'stop_reason':'tool_use' if calls else 'end_turn','stop_sequence':None,
+                    'content':content,'stop_reason':'tool_use' if calls else 'max_tokens' if choice['finish_reason']=='length' else 'end_turn','stop_sequence':None,
                     'usage':{'input_tokens':0,'output_tokens':0}})
 
     async def close(self):

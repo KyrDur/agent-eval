@@ -18,4 +18,4 @@ export const demoCases = [
   ['points','花的钱有奖励吗？','每一元消费一个积分，一百积分兑换一元。'],
   ['address','送错地方能改吗？','揽收前修改，揽收后核验可否拦截。'],
   ['warranty','买的坏了找谁？','提供订单和故障证据，经核验安排保修。'],
-].map(([id,query,expected_answer],i) => ({case_id:`rag_${i+1}`,query,relevant_document_ids:[id],expected_answer,source:'demo'}))
+].map(([id,query,expected_answer],i) => ({case_id:`rag_${i+1}`,query,relevant_document_ids:[id],expected_answer,source:'demo',reference_complete:true,reference_completeness:{reason:'仅针对所附 Demo 政策的构造题；不代表真实店铺政策。'}}))

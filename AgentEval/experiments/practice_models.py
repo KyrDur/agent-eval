@@ -1,5 +1,5 @@
 """Immutable evidence from interactive use and repeated experiments."""
-from pydantic import Field
+from pydantic import Field, model_serializer
 from typing import Literal
 from .models import Artifact, uid
 from .retrieval_models import RetrievalConfig
@@ -22,8 +22,16 @@ class ChatTurn(Artifact):
     retrieval: dict
     citations: list[dict]
     provider_observations: list[dict]
+    provider_call_traces: list[dict] = Field(default_factory=list)
     provider_call_count: int
     latency_ms: float
+
+    @model_serializer(mode='wrap')
+    def preserve_historical_shape(self, handler):
+        data=handler(self)
+        if 'provider_call_traces' not in self.model_fields_set:
+            data.pop('provider_call_traces',None)
+        return data
 
 class RepeatReport(Artifact):
     report_id: str = Field(default_factory=uid)
@@ -40,6 +48,16 @@ class ExperimentConclusion(Artifact):
     decision: Literal['KEEP','REVISE','REVERT']
     reason: str
     user_confirmed: Literal[True]
+    schema_version: str = '1'
+    decision_scope: Literal['FULL_SCOPE','LIMITED_OBSERVATION'] = 'FULL_SCOPE'
+    limitations_snapshot: list[str] = Field(default_factory=list)
+
+    @model_serializer(mode='wrap')
+    def preserve_historical_decision(self,handler):
+        data=handler(self)
+        for key in ('schema_version','decision_scope','limitations_snapshot'):
+            if key not in self.model_fields_set:data.pop(key,None)
+        return data
 
 class InterviewAttempt(Artifact):
     attempt_id: str = Field(default_factory=uid)

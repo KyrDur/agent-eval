@@ -1,5 +1,6 @@
 """Knowledge → real retrieval → one confirmed intervention → paired evidence."""
 import asyncio
+import re
 import time
 from pathlib import Path
 from evaluation.config import DEFAULT_CONFIG
@@ -13,8 +14,10 @@ from .retrieval_models import (RetrievalCase, RetrievalEvalSet, RetrievalConfig,
 from .retrieval_knowledge import FrozenKnowledge
 from .retrieval_metrics import case_metrics, aggregate, transition, answer_transition
 from .retrieval_runtime import pipeline_snapshot, rewrite, rerank, evaluate_answer, retrieve_context
+from .scoring_profiles import resolve_profile
+from .trusted_results import SCHEMA, freeze_input, answer_trust, sample_flow, comparison_trust, reconcile
 
-CHANGE_FIELDS={'TOP_K_CHANGE':'top_k','QUERY_REWRITE_TOGGLE':'query_rewrite','RERANK_TOGGLE':'rerank'}
+CHANGE_FIELDS={'TOP_K_CHANGE':'top_k','QUERY_REWRITE_TOGGLE':'query_rewrite','RERANK_TOGGLE':'rerank','ANSWER_PROMPT_CHANGE':'answer_prompt'}
 
 def config_diff(before,after):
     a=before.model_dump() if hasattr(before,'model_dump') else before
@@ -22,7 +25,9 @@ def config_diff(before,after):
     return [{'path':key,'before':a[key],'after':b[key]} for key in sorted(a) if a[key]!=b[key]]
 
 def implementation_snapshot():
-    files=['retrieval_knowledge.py','retrieval_embeddings.py','retrieval_lexical_v1.py','retrieval_runtime.py','retrieval_metrics.py','retrieval_service.py']
+    files=['retrieval_knowledge.py','retrieval_embeddings.py','retrieval_lexical_v1.py','retrieval_runtime.py','retrieval_metrics.py','retrieval_service.py','retrieval_validation.py','provider_transport.py','evidence_judge.py','scoring_profiles.py','trusted_results.py','evidence_policy.py','input_budget.py']
+    files+=['openai_chat.py','providers.py','provider_trace.py','judge_contract.py','judge_jobs.py','calibration_models.py',
+            '../evaluation/calibration.py','../evaluation/calibration_evidence.py']
     return {name:text_hash((Path(__file__).parent/name).read_text()) for name in files}
 
 def knowledge_control_reasons(before,after):
@@ -47,18 +52,28 @@ class RetrievalService:
         with self.store.transaction():
             for run in self.store.list('retrieval_runs'):
                 if run.status=='RUNNING':
+                    import os
+                    handoff=os.getenv('AGENTEVAL_HANDOFF_SOCKET')
+                    if handoff and Path(handoff).exists():continue
                     try: lease=self.store.acquire_run_lease(run.run_id,'retrieval_runs')
                     except BlockingIOError: continue
                     try:
-                        self.store.put('retrieval_runs',run.model_copy(update={'status':'FAILED','finished_at':now(),
-                            'runtime_end_check':{'reliable_isolation':False,'reasons':['PROCESS_INTERRUPTED']},
+                        reliable=False
+                        try:
+                            self.knowledge.verify(self.store.get('knowledge_indices',run.controls['index_snapshot']['index_id']))
+                            reliable=True
+                        except Exception:pass
+                        self.store.put('retrieval_runs',run.model_copy(update={'status':'PARTIAL' if reliable and run.case_results else 'FAILED','finished_at':now(),
+                            'runtime_end_check':{'reliable_isolation':reliable,'reasons':['PROCESS_INTERRUPTED']},
                             'warnings':[ *run.warnings,'PROCESS_INTERRUPTED']}))
                     finally: lease.close()
 
-    def create_evalset(self,index_id,name,cases,evalset_id=None,allow_missing_labels=False):
+    def create_evalset(self,index_id,name,cases,evalset_id=None,allow_missing_labels=False,split_reviewed=False):
         index=self.store.get('knowledge_indices',index_id)
         self.knowledge.verify(index)
         cases=[RetrievalCase.model_validate(c) for c in cases]
+        from .retrieval_validation import validate_split
+        validate_split(cases,split_reviewed)
         docs={c['document_id'] for c in index.chunks}; chunks={c['chunk_id'] for c in index.chunks}
         if any((set(c.relevant_document_ids)-docs or set(c.relevant_chunk_ids)-chunks)
                and not (c.allow_missing_knowledge or allow_missing_labels) for c in cases):
@@ -75,23 +90,28 @@ class RetrievalService:
             version=self.store.get('retrieval_evalsets',evalset_id).version+1 if evalset_id else 1
             identity={'index_id':index_id,'cases':[c.model_dump() for c in sorted(cases,key=lambda c:c.case_id)]}
             ev=RetrievalEvalSet(retrieval_eval_set_id=evalset_id or uid(),version=version,name=name,
-                               index_id=index_id,cases=cases,eval_set_hash=digest(identity))
+                               index_id=index_id,cases=cases,eval_set_hash=digest(identity),split_reviewed=split_reviewed)
             return self.store.put('retrieval_evalsets',ev)
 
-    def controls(self,ev,index,provider_config,verify_answers):
-        return {'eval_set_hash':ev.eval_set_hash,'eval_set_snapshot':ev.model_dump(mode='json'),
+    def controls(self,ev,index,provider_config,verify_answers,cases=None,profile=None,partition='DEBUG'):
+        value={'eval_set_hash':ev.eval_set_hash,'eval_set_snapshot':ev.model_dump(mode='json'),
                 'knowledge_snapshot':self.store.get('knowledge_datasets',index.knowledge_dataset_id,index.knowledge_version).model_dump(mode='json'),
                 'chunk_snapshot_hash':index.chunk_snapshot_hash,'index_snapshot':index.model_dump(mode='json'),
                 'embedding_snapshot':index.embedding_snapshot,'distance_metric':'cosine',
                 'retrieval_implementation':implementation_snapshot(),'pipeline':pipeline_snapshot(provider_config),
                 'evaluation_config':DEFAULT_CONFIG.model_dump(), 'evaluation_protocol':evaluation_protocol(),
                 'evaluation_protocol_hash':digest(evaluation_protocol()),'verify_answers':verify_answers,
-                'execution_order':sorted(c.case_id for c in ev.cases),
+                'execution_order':sorted(c.case_id for c in (ev.cases if cases is None else cases)),
                 'rank_policy':'FIRST_RELEVANT_MRR_AT_FIXED_CANDIDATE_POOL_THEN_RECALL; DUPLICATE_DOCUMENT_CHUNKS_NO_EXTRA_CREDIT',
                 'metric_protocol':{'fixed_pool_metrics':['hit_at_1','hit_at_3','mrr'],
                                    'returned_top_k_metrics':['recall_at_k','precision_at_k','ndcg_at_k'],
                                    'label_policy':'USER_BINARY_LABELS; ONE_GRANULARITY_PER_CASE; DOCUMENT_DUPLICATES_NO_EXTRA_CREDIT'},
                 'cache':{'cache_enabled':False,'cache_namespace':None,'cache_policy':'DISABLED'}}
+        value['trust_contract_version']='EVIDENCE_CONTRACT_V2'
+        value['evaluation_scope']={'partition':partition,'holdout_count':sum(c.partition=='HOLDOUT' for c in ev.cases),
+            'split_reviewed':ev.split_reviewed,'isolation':'WORKFLOW_ONLY'}
+        if profile:value['scoring_profile']=profile
+        return value
 
     def propose_change(self,baseline_run_id,change_type,after_config,reason,selected_case_ids,user_confirmed,target_index_id=None):
         before=self.store.get('retrieval_runs',baseline_run_id)
@@ -117,7 +137,8 @@ class RetrievalService:
             ev=before.controls['eval_set_snapshot']
             if any(c.get('relevant_chunk_ids') for c in ev['cases']):
                 raise ValueError('Knowledge update comparison requires stable document-level labels')
-            target_ev=self.create_evalset(target.index_id,ev['name'],ev['cases'],allow_missing_labels=True)
+            target_ev=self.create_evalset(target.index_id,ev['name'],ev['cases'],allow_missing_labels=True,
+                split_reviewed=ev.get('split_reviewed',False))
             target_eval_set_id=target_ev.retrieval_eval_set_id
             changes=[{'path':'knowledge_index','before':old.index_id,'after':target.index_id}]
         elif target_index_id or len(changes)!=1 or changes[0]['path']!=CHANGE_FIELDS.get(change_type):
@@ -157,16 +178,43 @@ class RetrievalService:
         finally: await provider.close()
 
     async def run(self,provider_session_id,retrieval_eval_set_id,version=None,run_type='BASELINE',
-                  parent_run_id=None,change_id=None,retrieval_config=None,verify_answers=False):
+                  parent_run_id=None,change_id=None,retrieval_config=None,verify_answers=False,
+                  scoring_profile_id=None,_partition='DEBUG',_sink_group='retrieval_runs',request_id=None,_request_limit=None):
+        request_hash=digest({'provider_session_id':provider_session_id,'retrieval_eval_set_id':retrieval_eval_set_id,
+            'version':version,'run_type':run_type,'parent_run_id':parent_run_id,'change_id':change_id,
+            'retrieval_config':retrieval_config.model_dump() if hasattr(retrieval_config,'model_dump') else retrieval_config,
+            'verify_answers':verify_answers,'scoring_profile_id':scoring_profile_id,'partition':_partition})
+        def existing_request():
+            if request_id is None:return None
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',request_id):raise ValueError('IDEMPOTENCY_REQUEST_INVALID')
+            prior=next((r for r in self.store.list(_sink_group) if r.request_id==request_id),None)
+            if prior and prior.request_hash!=request_hash:raise ValueError('IDEMPOTENCY_CONFLICT')
+            return prior
+        if request_id is not None:
+            with self.store.transaction():
+                prior=existing_request()
+                if prior:return prior
+        if _request_limit is not None and (type(_request_limit) is not int or _request_limit<0):raise ValueError('CALL_BUDGET_EXCEEDED')
         session=self.providers.get(provider_session_id)
         key=self.providers.credential(provider_session_id)
         judge_key=self.providers.judge_credential(provider_session_id)
         if session.text_connection_status!='READY': raise ProviderFailure('CONNECTION_NOT_VERIFIED')
         ev=self.store.get('retrieval_evalsets',retrieval_eval_set_id,version)
+        if _partition not in {'DEBUG','HOLDOUT'} or _sink_group not in {'retrieval_runs','retrieval_validation_runs'}:
+            raise ValueError('RETRIEVAL_SCOPE_INVALID')
+        if _partition=='HOLDOUT' and _sink_group!='retrieval_validation_runs':raise ValueError('HOLDOUT_LOCKED')
+        if any(c.partition=='HOLDOUT' for c in ev.cases) and not ev.split_reviewed:raise ValueError('HOLDOUT_SPLIT_NOT_CONFIRMED')
+        cases=[c for c in ev.cases if c.partition==_partition]
+        if not cases:raise ValueError('EVALUATION_PARTITION_EMPTY')
         index=self.store.get('knowledge_indices',ev.index_id)
         self.knowledge.verify(index)
         config=RetrievalConfig.model_validate(retrieval_config or {})
-        controls=self.controls(ev,index,session.configuration,verify_answers)
+        if run_type=='RETEST':
+            saved=self.store.get('retrieval_runs',parent_run_id).controls.get('scoring_profile')
+            if scoring_profile_id and (not saved or saved['profile_id']!=scoring_profile_id):raise ValueError('SCORING_PROFILE_CHANGED')
+            scoring_profile_id=saved['profile_id'] if saved else None
+        profile=resolve_profile(self.store,scoring_profile_id,session.configuration) if verify_answers else None
+        controls=self.controls(ev,index,session.configuration,verify_answers,cases,profile,_partition)
         if run_type=='RETEST':
             base=self.store.get('retrieval_runs',parent_run_id)
             change=self.store.get('retrieval_changes',change_id)
@@ -191,20 +239,61 @@ class RetrievalService:
                          provider_readiness_snapshot={'text_connection_status':session.text_connection_status,
                              'tool_call_capability':session.tool_call_capability},controls=controls,retrieval_config=config,
                          execution_order=controls['execution_order'],verify_answers=verify_answers,
+                         trust_schema_version=SCHEMA, input_packages=[], sample_flow={},
+                         request_id=request_id,request_hash=request_hash if request_id else None,
+                         experiment_identity={'schema_version':SCHEMA,'subject':'AGENT_OPTIMIZATION',
+                             'operation':'AGENT_RERUN','evaluation_unit':'CURRENT_TURN',
+                             'answer_prompt_hash':text_hash(config.answer_prompt or __import__('experiments.retrieval_runtime',fromlist=['ANSWER_PROMPT']).ANSWER_PROMPT),
+                             'changed_component':change.change_type if run_type=='RETEST' else None,
+                             'declared_diff':change.declared_diff if run_type=='RETEST' else [],
+                             'fixed_controls_hash':digest(controls),'single_variable_causality_established':False},
                          warnings=['SINGLE_RUN_RANDOMNESS','MODEL_BACKEND_REVISION_UNKNOWN',
-                                   'LOCAL_LEXICAL_EMBEDDING_NOT_NEURAL_SEMANTIC_MODEL','GROUNDED_ANSWER_NO_ROUTER_OR_MEMORY'])
+                                   'GROUNDED_ANSWER_NO_ROUTER_OR_MEMORY',
+                                   *(['LOCAL_LEXICAL_EMBEDDING_NOT_NEURAL_SEMANTIC_MODEL'] if index.embedding_snapshot.get('model')=='sha256-lexical-bigram-v1' else []),
+                                   *(['SCORING_PROFILE_INITIAL_UNVALIDATED'] if profile and profile['calibration_status']=='INITIAL_UNVALIDATED' else [])])
         with self.store.transaction():
-            lease=self.store.acquire_run_lease(run.run_id,'retrieval_runs')
-            self.store.put('retrieval_runs',run)
+            prior=existing_request()
+            if prior:return prior
+            lease=self.store.acquire_run_lease(run.run_id,_sink_group)
+            self.store.put(_sink_group,run)
         provider=ObservedProvider(session.configuration,key,judge_key)
+        if _request_limit is not None:provider.request_limit=_request_limit
         results=[];answers=[];boundary={'reliable_isolation':True,'frozen_index_verified':True,'cache_used':False,
-                                       'shared_online_chroma_accessed':False,'reasons':[]}
-        status='COMPLETE'
+                                       'shared_online_chroma_accessed':False,'reasons':[],
+                                       'request_limit':min(session.configuration.max_calls,_request_limit) if _request_limit is not None else session.configuration.max_calls}
+        status='COMPLETE';staged_answers={}
+        def checkpoint(pending_answer=None):
+            if pending_answer:staged_answers[pending_answer.case_id]=pending_answer
+            acquired={a.case_id for a in answers}
+            current=run.model_copy(update={'case_results':results,'answer_results':[*answers,*[a for sid,a in staged_answers.items() if sid not in acquired]],
+                'input_packages':[r['input_package'] for r in results],
+                'provider_observations':provider.observations,'provider_call_count':provider.call_count})
+            with self.store.transaction():self.store.put(_sink_group,current)
         try:
-            for case in sorted(ev.cases,key=lambda c:c.case_id):
-                row=await retrieve_context(self.knowledge,index,provider,case.query,config,controls['pipeline'],case.context)
+            for case in sorted(cases,key=lambda c:c.case_id):
+                case_started=time.monotonic();observation_start=len(provider.observations);trace_start=len(provider.call_traces)
+                from .input_budget import preflight
+                from .retrieval_runtime import ANSWER_PROMPT
+                from .providers import ProviderConfig
+                preflight_error=None
+                try:
+                    cfg=session.configuration
+                    # Preflight acquisition here. Judge preflights the actual sealed
+                    # answer separately; metadata and hypothetical answers are not
+                    # concatenated into a request that will never be sent.
+                    planned={'question':case.query,'context':case.context,'system':config.answer_prompt or ANSWER_PROMPT,
+                        'retrieved_knowledge':sorted(index.chunks,key=lambda c:len(c['text']),reverse=True)[:config.top_k],
+                        'max_tokens':cfg.resolved()['general']['max_tokens']}
+                    preflight(planned,cfg.context_window_tokens)
+                except ProviderFailure as error:preflight_error=error.code
+                if preflight_error:
+                    row={'query':case.query,'effective_query':case.query,'status':'INVALID','error':preflight_error,
+                        'index_id':index.index_id,'top_k':config.top_k,'results':[],'post_rerank_results':[],'pre_rerank_results':[],
+                        'steps':[{'operation':'INPUT_PREFLIGHT','status':'FAILED','error':preflight_error}]}
+                else:row=await retrieve_context(self.knowledge,index,provider,case.query,config,controls['pipeline'],case.context)
                 row.update(case_id=case.case_id,relevant_document_ids=case.relevant_document_ids,
-                           relevant_chunk_ids=case.relevant_chunk_ids,partition=case.partition)
+                           relevant_chunk_ids=case.relevant_chunk_ids,partition=case.partition,run_id=run.run_id,
+                           input_package=freeze_input(case,row,None,controls['knowledge_snapshot']['documents'],run.run_id))
                 row['metrics']=case_metrics(case,row['results'],config.top_k,row['post_rerank_results'])
                 if row['status']!='SUCCESS':
                     row['metrics']={**row['metrics'],**{k:None for k in ('hit_at_1','hit_at_3','recall_at_k','precision_at_k','mrr','ndcg_at_k')},
@@ -213,8 +302,16 @@ class RetrievalService:
                 row['retrieval_status']=('INVALID' if row['status']!='SUCCESS' else 'UNLABELED' if row['metrics']['mrr'] is None
                     else 'TOP_1_HIT' if rank==1 else 'LOWER_RANK_HIT' if rank is not None else 'NOT_RETRIEVED')
                 results.append(row)
-                if verify_answers:
-                    answers.append(await evaluate_answer(provider,case,row,controls['evaluation_config']))
+                checkpoint()
+                try:
+                    if verify_answers:
+                        answers.append(await evaluate_answer(provider,case,row,controls['evaluation_config'],profile,
+                            controls['knowledge_snapshot']['documents'],config.answer_prompt,checkpoint))
+                finally:
+                    row['provider_observations']=[{**o,'case_id':case.case_id} for o in provider.observations[observation_start:]]
+                    row['provider_call_traces']=[{**o,'case_id':case.case_id} for o in provider.call_traces[trace_start:]]
+                    row['case_latency_ms']=round((time.monotonic()-case_started)*1000,2)
+                    checkpoint()
             await asyncio.to_thread(self.knowledge.verify,index)
         except asyncio.CancelledError:
             status='PARTIAL';boundary['reasons'].append('ACQUISITION_INTERRUPTED')
@@ -226,6 +323,8 @@ class RetrievalService:
             status='FAILED';boundary.update(reliable_isolation=False,reasons=['FROZEN_INDEX_OR_RUNTIME_FAILURE'])
         finally:
             await provider.close()
+            acquired={a.case_id for a in answers}
+            answers.extend(a for sid,a in staged_answers.items() if sid not in acquired)
             boundary['provider_errors']=provider.errors
             if implementation_snapshot()!=controls['retrieval_implementation'] or digest(evaluation_protocol())!=controls['evaluation_protocol_hash']:
                 boundary.update(reliable_isolation=False,reasons=[*boundary['reasons'],'IMPLEMENTATION_OR_EVALUATION_PROTOCOL_DRIFT'])
@@ -240,34 +339,54 @@ class RetrievalService:
                     'original_reason':'冻结索引或运行边界未能验证，不能形成有效质量结论。',
                     'judge_status':'NOT_RUN','scores':{},'evaluation_error':'RUNTIME_ISOLATION_UNVERIFIED'}) for a in answers]
             finished=run.model_copy(update={'status':status,'finished_at':now(),'case_results':results,'answer_results':answers,
-                'metrics':aggregate(results,len(ev.cases)),'answer_metrics':dialog_metrics(answers) if verify_answers else {},
+                'metrics':aggregate(results,len(cases)),'answer_metrics':dialog_metrics(answers) if verify_answers else {},
                 'provider_observations':provider.observations,'provider_call_count':provider.call_count,'runtime_end_check':boundary})
+            flow=sample_flow(finished)
+            finished=finished.model_copy(update={'input_packages':[r['input_package'] for r in results],
+                'sample_flow':flow, 'answer_metrics':{'legacy_metrics':finished.answer_metrics,
+                    'pass_rate':flow['machine_pass_rate']['value'],'valid':flow['coverage']['numerator'],'passed':flow['states']['PASS']['count'],
+                    'coverage':flow['coverage'],'publication_status':flow['publication_status']}})
             try:
-                with self.store.transaction(): finished=self.store.put('retrieval_runs',finished)
+                with self.store.transaction(): finished=self.store.put(_sink_group,finished)
             finally: lease.close()
         return finished
 
     def effective_answers(self,run):
-        answers={r.case_id:r for r in run.answer_results}
+        # Preserve duplicate/unexpected events for reconciliation. A dict here
+        # used to silently discard duplicate outputs before checking their IDs.
+        answers=list(run.answer_results)
         for review in sorted(self.store.list('retrieval_reviews'),key=lambda r:r.revision):
-            if review.run_id==run.run_id: answers[review.case_id]=review.effective_result
-        return list(answers.values())
+            if review.run_id==run.run_id:
+                answers=[review.effective_result if a.case_id==review.case_id else a for a in answers]
+        return answers
 
-    def review(self,run_id,case_id,status,reason):
+    def review(self,run_id,case_id,status,reason,reviewer='工作区用户'):
         with self.store.transaction():
             run=self.store.get('retrieval_runs',run_id)
             if run.status not in {'COMPLETE','PARTIAL'}: raise ValueError('Review requires acquired Run')
             current=next((r for r in self.effective_answers(run) if r.case_id==case_id),None)
             if current is None: raise ValueError('Answer Case not found')
-            effective=current.review(status,reason)
+            effective=current.review('INVALID' if status in {'EVIDENCE_INSUFFICIENT','NOT_APPLICABLE'} else status,reason)
+            if status in {'EVIDENCE_INSUFFICIENT','NOT_APPLICABLE'}:
+                effective=effective.model_copy(update={'human_evaluation_state':status})
             revision=max([r.revision for r in self.store.list('retrieval_reviews') if r.run_id==run_id],default=0)+1
-            return self.store.put('retrieval_reviews',RetrievalReview(run_id=run_id,case_id=case_id,revision=revision,effective_result=effective))
+            return self.store.put('retrieval_reviews',RetrievalReview(run_id=run_id,case_id=case_id,revision=revision,effective_result=effective,reviewer=reviewer,evaluation_state=status))
 
     def view(self,run_id):
         run=self.store.get('retrieval_runs',run_id)
         answers=self.effective_answers(run)
+        flow=sample_flow(run,answers)
+        rows={r['case_id']:r for r in run.case_results if r['case_id'] in flow['retrieval_reconciliation']['valid_ids']}
+        valid_ids=set(flow['answer_reconciliation']['valid_ids']) if flow['answer_reconciliation'] else set()
+        answer_map={a.case_id:a for a in answers if a.case_id in valid_ids}
         return {'run':run.model_dump(mode='json'),'effective_answer_results':[r.to_dict() for r in answers],
-                'answer_metrics':dialog_metrics(answers) if run.verify_answers else {}}
+                'answer_metrics':{'pass_rate':flow['machine_pass_rate']['value'],'valid':flow['coverage']['numerator'], 'passed':flow['states']['PASS']['count'], 'coverage':flow['coverage'], 'publication_status':flow['publication_status']} if run.verify_answers else {},
+                'legacy_answer_metrics':dialog_metrics(answers) if run.verify_answers else {},
+                'trusted_result':{'schema_version':SCHEMA,'historical_metadata_unknown':run.trust_schema_version is None,
+                    'experiment_identity':run.experiment_identity or {'subject':'UNKNOWN','operation':'UNKNOWN'},
+                    'sample_flow':flow,'cases':[{'case_id':identifier,
+                        **answer_trust(answer_map.get(identifier),rows.get(identifier,{}).get('input_package'),rows.get(identifier))}
+                        for identifier in run.execution_order]}}
 
     def compare(self,baseline_run_id,retest_run_id):
         before=self.store.get('retrieval_runs',baseline_run_id);after=self.store.get('retrieval_runs',retest_run_id)
@@ -304,8 +423,12 @@ class RetrievalService:
             except (FileNotFoundError,ValueError): pass
         if not single: reasons.append('UNRECORDED_OR_MULTI_COMPONENT_CHANGE')
         comparable=not reasons
-        left={r['case_id']:r for r in before.case_results};right={r['case_id']:r for r in after.case_results}
-        answers_a={r.case_id:r for r in self.effective_answers(before)};answers_b={r.case_id:r for r in self.effective_answers(after)}
+        raw_answers_a=self.effective_answers(before);raw_answers_b=self.effective_answers(after)
+        flow_a=sample_flow(before,raw_answers_a);flow_b=sample_flow(after,raw_answers_b)
+        left={r['case_id']:r for r in before.case_results if r['case_id'] in flow_a['retrieval_reconciliation']['valid_ids']}
+        right={r['case_id']:r for r in after.case_results if r['case_id'] in flow_b['retrieval_reconciliation']['valid_ids']}
+        answers_a={r.case_id:r for r in raw_answers_a if flow_a['answer_reconciliation'] and r.case_id in flow_a['answer_reconciliation']['valid_ids']}
+        answers_b={r.case_id:r for r in raw_answers_b if flow_b['answer_reconciliation'] and r.case_id in flow_b['answer_reconciliation']['valid_ids']}
         expected=sorted(set(before.execution_order)|set(after.execution_order));pairs=[]
         paired_a=[];paired_b=[]
         for case_id in expected:
@@ -317,18 +440,37 @@ class RetrievalService:
                           'partition':(a or b or {}).get('partition','DEBUG'),
                           'baseline_answer':answers_a[case_id].to_dict() if case_id in answers_a else None,
                           'retest_answer':answers_b[case_id].to_dict() if case_id in answers_b else None,
+                          'baseline_trust':answer_trust(answers_a.get(case_id),(a or {}).get('input_package'),a),
+                          'retest_trust':answer_trust(answers_b.get(case_id),(b or {}).get('input_package'),b),
                           'answer_transition':answer_transition(answers_a.get(case_id),answers_b.get(case_id),
-                              reason if reasons or a is None or b is None else None)})
+                              reason or 'ANSWER_EVIDENCE_NOT_COMPARABLE' if (reasons or a is None or b is None
+                                  or answer_trust(answers_a.get(case_id),(a or {}).get('input_package'),a)['evaluation_state'] not in {'PASS','FAIL'}
+                                  or answer_trust(answers_b.get(case_id),(b or {}).get('input_package'),b)['evaluation_state'] not in {'PASS','FAIL'}) else None)})
         matched=len(set(left)&set(right)&set(expected))
         reviews=[r.model_dump() for r in self.store.list('retrieval_reviews') if r.run_id in {before.run_id,after.run_id}]
+        trust=comparison_trust(before,after,raw_answers_a,raw_answers_b,comparable)
+        family_by_id={c['case_id']:c.get('group_id') or c['case_id'] for c in before.controls['eval_set_snapshot']['cases']}
+        families={}
+        for pair in pairs:
+            family=family_by_id.get(pair['case_id'],pair['case_id'])
+            item=families.setdefault(family,{'family_id':family,'sample_ids':[],'improved':0,'regressed':0,'still_failed':0,'unchanged':0,'not_comparable':0})
+            item['sample_ids'].append(pair['case_id'])
+            movement=pair['answer_transition']
+            key='improved' if movement=='FAIL→PASS' else 'regressed' if movement=='PASS→FAIL' else 'still_failed' if movement=='FAIL→FAIL' else 'unchanged' if movement=='PASS→PASS' else 'not_comparable'
+            item[key]+=1
+        trust['problem_families']=list(families.values())
+        trust['experiment_kind']='OFFLINE_CONTROLLED_COMPARISON'
+        trust['causal_effect_established']=False
+        complete=matched==len(expected) and flow_a['complete'] and flow_b['complete']
         comparison=RetrievalComparison(baseline_run_id=before.run_id,retest_run_id=after.run_id,comparable=comparable,
-            comparability_reasons=reasons,comparison_completeness='FULL' if matched==len(expected) else 'PARTIAL',
+            comparability_reasons=reasons,comparison_completeness='FULL' if complete else 'PARTIAL',
             expected_case_count=len(expected),matched_case_count=matched,single_recorded_change=single,
             attribution_status='INSUFFICIENT_EVIDENCE' if comparable else 'CONTROL_CONDITIONS_CHANGED',
             warnings=['SINGLE_RUN_RANDOMNESS','MODEL_BACKEND_REVISION_UNKNOWN','RETRIEVAL_IMPROVEMENT_IS_NOT_ANSWER_IMPROVEMENT',
-                      *(['PARTIAL_PAIRED_METRICS_ONLY_NO_WHOLE_EVALSET_CLAIM'] if matched<len(expected) else []),
+                      *(['PARTIAL_PAIRED_METRICS_ONLY_NO_WHOLE_EVALSET_CLAIM'] if not complete else []),
+                      *trust['restriction_reasons'],
                       'ANSWER_REVIEW_SNAPSHOT_'+digest(reviews)],
-            case_pairs=pairs,metrics_before=aggregate(before.case_results,len(expected)),metrics_after=aggregate(after.case_results,len(expected)),
+            case_pairs=pairs,metrics_before=aggregate(list(left.values()),len(expected)),metrics_after=aggregate(list(right.values()),len(expected)),
             paired_metrics={'baseline':aggregate(paired_a),'retest':aggregate(paired_b),'scope':'MATCHED_VALID_LABELED_CASE_PAIRS'},
-            answer_review_snapshot={'records':reviews,'hash':digest(reviews)})
+            answer_review_snapshot={'records':reviews,'hash':digest(reviews)},trust_summary=trust)
         with self.store.transaction(): return self.store.put('retrieval_comparisons',comparison)
