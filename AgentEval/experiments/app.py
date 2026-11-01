@@ -83,6 +83,8 @@ async def lifespan(app):
 app = FastAPI(title='Agent Eval',lifespan=lifespan)
 app.add_middleware(WorkspaceMiddleware)
 app.add_middleware(AnalyticsMiddleware)
+from .site_provider import router as site_provider_router
+app.include_router(site_provider_router)
 app.include_router(operations_router)
 app.include_router(calibration_router)
 app.include_router(learning_router)

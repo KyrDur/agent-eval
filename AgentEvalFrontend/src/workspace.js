@@ -86,6 +86,15 @@ export function createWorkspace(storage = globalThis.localStorage, client = api,
     reset() { clearTimeout(pollTimer); Object.assign(state, { step: 'welcome', session: null, evalSet: null, baseline: null,
       retest: null, decision: null, change: null, comparison: null, selectedCase: null, error: null }); persist() },
     async setup(config, key) { return action('保存模型会话', async () => { state.session = await client.post('/provider-sessions', { ...config, api_key: key }); return state.session }) },
+    async connectSite() {
+      return action('连接站点 API', async () => {
+        const result=await client.post('/site-provider/connect')
+        if(result.status!=='SUCCESS')return result
+        state.session=result.session;persist()
+        state.notice='站点 API 连接成功，可以继续准备资料。'
+        return result
+      })
+    },
     async connectAndCheck(config,key) {
       return action('连接并检查模型',async()=>{
         state.session=await client.post('/provider-sessions',{...config,api_key:key});persist()

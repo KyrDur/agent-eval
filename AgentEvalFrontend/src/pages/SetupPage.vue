@@ -2,6 +2,7 @@
 import {analytics} from '../analytics.js'
 import { computed, inject, reactive, ref, watch } from 'vue'
 import { modelPresets, presetConfig, identifyPreset, isAcceptanceConnection } from '../model-presets.js'
+import { api } from '../api.js'
 import { toolStates } from '../presentation'
 import IndependentJudge from '../components/IndependentJudge.vue'
 const work = inject('workspace'), { state } = work
@@ -14,6 +15,13 @@ const config = reactive({ ...presetConfig('deepseek'), temperature: 0,
   max_tokens: 1024, timeout_seconds: 60, max_calls: 100, context_window_tokens:32768 })
 const selectedPreset = ref('deepseek')
 const preset = computed(() => modelPresets.find(p => p.id === selectedPreset.value))
+const siteStatus=ref(''), siteBusy=ref(false)
+const siteMessages={AVAILABLE:'站点 API 当前有可用额度，可以连接使用。',SUCCESS:'已连接站点 API，可以继续准备资料。',NO_BALANCE:'站点 API 额度已用完，请在下方连接自己的 API。',NOT_CONFIGURED:'站点 API 暂未开放，请连接自己的 API。',AUTH_FAILED:'站点 API 暂不可用，请连接自己的 API。',CHECK_FAILED:'暂时无法查询额度，可重试或连接自己的 API。',CONNECTION_FAILED:'站点 API 连接未通过，请重试或连接自己的 API。'}
+async function checkSite(connect=false){
+ siteBusy.value=true
+ try{const result=connect?await work.connectSite():await api.post('/site-provider/check');siteStatus.value=result?.status||'CHECK_FAILED'}
+ catch{siteStatus.value='CHECK_FAILED'}finally{siteBusy.value=false}
+}
 const key = ref(''), roles = ref('{}'), outputMode=ref('text')
 const historicalTestConnection=computed(()=>isAcceptanceConnection(state.session?.configuration))
 watch(() => state.session, session => { if (session) {
@@ -37,9 +45,14 @@ async function save() {
 }
 </script>
 <template>
-  <div class="page-heading"><div><h1>连接自己的模型</h1></div><span class="pill">Key 仅保留在当前后端内存</span></div>
+  <div class="page-heading"><div><h1>连接模型</h1></div><span class="pill">Key 仅保留在当前后端内存</span></div>
+  <section class="panel"><h2>使用站点 API</h2><p>无需填写 Key，使用站点提供的 DeepSeek。可以先检查额度；连接检查会发送一次简短测试请求，后续实验使用站点额度。</p>
+    <div class="button-row"><button class="secondary" :disabled="siteBusy || !!state.busy" @click="checkSite()">{{siteBusy?'正在检查…':'检查站点 API 额度'}}</button><button class="primary" :disabled="siteBusy || !!state.busy" @click="checkSite(true)">使用站点 API 并检查连接</button></div>
+    <p v-if="siteStatus" role="status">{{siteMessages[siteStatus]||siteMessages.CHECK_FAILED}}</p>
+    <p class="muted">额度是共享的，本次检查可用不保证后续始终充足。也可以直接使用下方自己的 API。</p>
+  </section>
   <div class="two-column setup-columns">
-    <section class="panel"><h2>模型配置</h2><p v-if="historicalTestConnection" class="note">旧实验使用本地测试服务。这里已填入 DeepSeek 官方配置，也可以改选其他服务；输入密钥后点击“连接并检查”。</p><p class="muted">连接并检查会保存当前配置并发送一次测试请求；费用以服务账单为准。</p>
+    <section class="panel"><h2>使用自己的 API</h2><p v-if="historicalTestConnection" class="note">旧实验使用本地测试服务。这里已填入 DeepSeek 官方配置，也可以改选其他服务；输入密钥后点击“连接并检查”。</p><p class="muted">连接并检查会保存当前配置并发送一次测试请求；费用以服务账单为准。</p>
       <form @submit.prevent="save">
         <label>模型服务<select aria-label="模型服务" v-track="{action:'setup.service',placement:'SetupPage.control_01'}" v-model="selectedPreset" @change="presetChanged"><option v-for="item in modelPresets" :key="item.id" :value="item.id">{{ item.label }}</option></select></label>
         <p class="muted preset-note">{{ anonymousWorkspace ? '公开站点支持 DeepSeek、百炼、Kimi、OpenAI、Claude、硅基流动、智谱、MiniMax 和火山方舟的已配置官方 HTTPS 地址。自定义地址也须在上述服务范围内。模型名称以你的账号实际开通为准。' : preset?.note }} <a v-track="{action:'setup.docs',placement:'SetupPage.control_02'}" v-if="preset?.docs" :href="preset.docs" target="_blank" rel="noopener noreferrer">官方说明 ↗</a></p>

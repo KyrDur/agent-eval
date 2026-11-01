@@ -154,6 +154,7 @@ class WorkspaceMiddleware:
                 or path.endswith('/index') or path.endswith('/test')
                 or path.endswith('/test-tools') or path.endswith('/retrieval-rewrite-preview')
                 or path.endswith('/chat-turns') or path.endswith('/retrieval-repeats'))
+            expensive = expensive or (scope['method']=='POST' and path=='/experiments/site-provider/connect')
             expensive = expensive or (scope['method']=='POST' and path.startswith('/experiments/calibration/') and path.endswith('/execute'))
             if expensive:
                 if registry.expensive.locked():
