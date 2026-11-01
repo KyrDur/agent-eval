@@ -6,6 +6,20 @@ from .calibration_models import Score
 
 VERSION = 'JUDGE_WIRE_V2'
 
+def allowed_scores(name, rubric):
+    return [0, 1, 2, 'INSUFFICIENT'] + (['NA'] if name in rubric.rules['na_allowed'] else [])
+
+def rubric_score_instructions(rubric):
+    """Derive the model's allowed values from the same frozen rules as validation."""
+    lines = ['本题评分取值约束（以冻结 Rubric 为准）：']
+    for name in rubric.dimensions:
+        allowed = allowed_scores(name, rubric)
+        lines.append(name + '.score 仅允许 ' + json.dumps(allowed, ensure_ascii=False)
+            + ('；仅在 Rubric 声明不适用时可用 NA。' if 'NA' in allowed else '；禁止 NA。'))
+    lines.append('无法判断时用 INSUFFICIENT，并在 insufficient_items 中说明缺少的依据。'
+        '不适用与证据不足不同，不能用 NA 代替 INSUFFICIENT，也不能为了通过校验而猜分。')
+    return '\n'.join(lines)
+
 class WireModel(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
 
@@ -89,6 +103,6 @@ EXAMPLE = {
     'task_failure_reasons':[],'insufficient_items':[],'reason':'桌面材质与承重均与规格一致。'}
 
 PROMPT_SUFFIX = '''
-JUDGE_WIRE_V2：四维 score 仅允许整数 0、1、2 或字符串 "NA"、"INSUFFICIENT"。不适用必须显式写 "NA"，证据不足写 "INSUFFICIENT"；禁止 null、布尔值、字符串数字、漏维度。NA 仍须符合本题冻结 Rubric。
+JUDGE_WIRE_V2：四维 score 使用整数 0、1、2 或字符串 "INSUFFICIENT"；仅 rubric.rules.na_allowed 列出的维度才允许 "NA"。禁止 null、布尔值、字符串数字、漏维度。严格遵守后附的逐维取值约束。
 以下为规格事实题的完整格式示例（仅说明格式，引用必须改为本题编号）：
 ''' + json.dumps(EXAMPLE, ensure_ascii=False)

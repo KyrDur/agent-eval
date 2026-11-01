@@ -3,6 +3,7 @@ import hashlib
 import math
 import re
 import unicodedata
+from functools import wraps
 from pathlib import Path
 from .canonical import digest, text_hash
 from .models import now, uid
@@ -22,6 +23,9 @@ def embedding_snapshot():
     return snapshot(LEXICAL)
 
 def chunks_for(dataset, config):
+    if config.algorithm=='source-section-v1':
+        from .rag_chunking import structure_chunks
+        return structure_chunks(dataset,config)
     chunks = []
     for doc in sorted(dataset.documents,key=lambda d:d['document_id']):
         text = normalize(doc['text'])
@@ -33,6 +37,19 @@ def chunks_for(dataset, config):
                            'title':doc['title']})
             if start+config.chunk_size >= len(text): break
     return chunks
+
+def bounded_index_build(function):
+    @wraps(function)
+    def build(*args,**kwargs):
+        import fcntl,tempfile
+        # Shared by legacy synchronous and new background paths. Encoding runs
+        # outside the workspace write lock, but never without a host build limit.
+        with (Path(tempfile.gettempdir())/'agent-eval-index-resource.lock').open('a+') as guard:
+            try:fcntl.flock(guard,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise ValueError('INDEX_RESOURCE_BUSY') from None
+            return function(*args,**kwargs)
+    return build
+
 
 class FrozenKnowledge:
     def __init__(self, store):
@@ -61,6 +78,7 @@ class FrozenKnowledge:
         from chromadb.config import Settings
         return chromadb.PersistentClient(path=str(self.path),settings=Settings(anonymized_telemetry=False))
 
+    @bounded_index_build
     def build(self, dataset_id, version, config=None, embedding_model=SEMANTIC):
         import chromadb
         dataset=self.store.get('knowledge_datasets',dataset_id,version)
@@ -72,6 +90,9 @@ class FrozenKnowledge:
                            'chunks':chunk_hash,'embedding':embedding,'chroma_version':chromadb.__version__,
                            'configuration':{'hnsw':{'space':'cosine'}}})
         name='rag_'+generation
+        # Encoding is bounded and cancellable in the background worker; do not hold
+        # the workspace write lock while loading a model or running inference.
+        vectors=encode([normalize(c["text"]) for c in chunks],embedding_model)
         with self.store.transaction():
             try:
                 existing=self.store.get('knowledge_indices',generation)
@@ -79,7 +100,6 @@ class FrozenKnowledge:
             if existing:
                 self.verify(existing)
                 return existing
-            vectors=encode([c["text"] for c in chunks],embedding_model)
             client=self.client()
             # A half-built, unsealed collection after interruption has no authority.
             try: client.delete_collection(name)
@@ -113,7 +133,7 @@ class FrozenKnowledge:
         if len(actual['ids'])!=len(index.chunks) or set(actual['ids'])!={c['chunk_id'] for c in index.chunks}:
             raise ValueError('Frozen index membership drift')
         expected={c['chunk_id']:c for c in index.chunks}
-        vectors=dict(zip([c['chunk_id'] for c in index.chunks],encode([c['text'] for c in index.chunks],model)))
+        vectors=dict(zip([c['chunk_id'] for c in index.chunks],encode([normalize(c['text']) for c in index.chunks],model)))
         for i,identifier in enumerate(actual['ids']):
             c=expected[identifier]
             metadata={'document_id':c['document_id'],'chunk_index':c['chunk_index'],'text_hash':c['text_hash']}
@@ -127,7 +147,8 @@ class FrozenKnowledge:
         collection=self.client().get_collection(index.collection_name,embedding_function=None)
         raw=collection.query(query_embeddings=encode([normalize(query)],model_for(index)),n_results=min(count,len(index.chunks)),
                              include=['distances','documents','metadatas'])
-        items=[{'chunk_id':identifier,'document_id':raw['metadatas'][0][i]['document_id'],
+        source_chunks={c['chunk_id']:c for c in index.chunks}
+        items=[{**(source_chunks[identifier] if index.chunk_config.algorithm=='source-section-v1' else {}),'chunk_id':identifier,'document_id':raw['metadatas'][0][i]['document_id'],
                 'text':raw['documents'][0][i],'distance':float(raw['distances'][0][i]),
                 'score':1-float(raw['distances'][0][i])} for i,identifier in enumerate(raw['ids'][0])]
         # Stable tie order; rank evidence records the actual deterministic policy.

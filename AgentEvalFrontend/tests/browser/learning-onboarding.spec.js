@@ -3,16 +3,17 @@ import path from 'node:path'
 const evidence=process.env.AGENTEVAL_TEST_EVIDENCE_DIR
 async function shot(page,name){if(evidence)await page.screenshot({path:path.join(evidence,name+'.png'),fullPage:true})}
 
-test('Five concrete optimization examples stay read-only until a learner starts practice',async({page})=>{
+test('All ten optimization examples stay read-only until a learner starts practice',async({page})=>{
  const errors=[],modelRequests=[]
  page.on('pageerror',e=>errors.push(e.message))
  page.on('request',r=>{if(r.method()==='POST'&&/provider-sessions|retrieval-runs|learning\/attempts/.test(r.url()))modelRequests.push(r.url())})
  await page.goto('/');await page.getByRole('button',{name:'先看一个完整案例 →',exact:true}).click()
  const guide=page.getByRole('region',{name:'完整评测示范'})
- await expect(page.getByRole('heading',{name:'先看五种改法怎么选'})).toBeVisible()
- const methods=guide.getByRole('navigation',{name:'五种改法'}).getByRole('button')
- await expect(methods).toHaveCount(5)
- for(let i=0;i<5;i++){
+ await expect(page.getByRole('heading',{name:'先看 10 种改法怎么选'})).toBeVisible()
+ const methods=guide.getByRole('navigation',{name:'选择一种改法'}).locator('.walkthrough-method-select')
+ await expect(methods).toHaveCount(10)
+ await expect(guide.locator('.method-new')).toHaveCount(5)
+ for(let i=0;i<10;i++){
   await methods.nth(i).click()
   await expect(guide.getByRole('heading',{name:'先看这道题与本轮资料'})).toBeVisible()
   await guide.getByRole('button',{name:'下一步：查原因 →',exact:true}).click()
@@ -26,10 +27,10 @@ test('Five concrete optimization examples stay read-only until a learner starts 
   await expect(guide.getByRole('heading',{name:'是否保留本次修改？'})).toBeVisible()
   if(i===2)await expect(guide.getByText('暂不保留这次从 3 条增至 5 条的修改。',{exact:true})).toBeVisible()
  }
- await shot(page,'onboarding-five-methods-desktop')
+ await shot(page,'onboarding-ten-methods-desktop')
  await page.setViewportSize({width:390,height:844})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2)).toBe(false)
- await shot(page,'onboarding-five-methods-mobile')
+ await shot(page,'onboarding-ten-methods-mobile')
  await expect(page.locator('.judgment-panel')).toHaveCount(0)
  await expect(guide.locator('textarea,input')).toHaveCount(0)
  expect(await (await page.request.get('/api/experiments/learning/attempts')).json()).toEqual([])

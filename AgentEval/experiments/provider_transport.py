@@ -51,6 +51,8 @@ class ObservedProvider:
     def client(self,role,connection_test=False,tool_probe=False):
         resolved = self.config.resolved()[role]
         async def create(**kwargs):
+            if getattr(self,'stop_requested',None) and self.stop_requested():
+                raise __import__('asyncio').CancelledError()
             if not hasattr(self,'call_traces'): self.call_traces=[]
             secrets=getattr(self,'_secrets',(self._key,))
             model = resolved['model']

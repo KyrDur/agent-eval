@@ -47,3 +47,43 @@ test('saving an empty optional note records a proposed experiment, not a fabrica
  const withAI=changePlanRecord(options(),'AI 认为要加资料',{id:'draft',text:'可能是排序问题'})
  assert.match(withAI,/可能含 AI 建议/);assert.match(withAI,/待核对节选/);assert.ok(withAI.length<3000)
 })
+
+test('new retrieval interventions each preserve all unselected settings',()=>{
+ for(const [type,extra,field,value] of [
+  ['RETRIEVAL_MODE_CHANGE',{retrievalMode:'BM25'},'retrieval_mode','BM25'],
+  ['CONTEXT_STRATEGY_CHANGE',{contextStrategy:'NEIGHBORS'},'context_strategy','NEIGHBORS'],
+  ['CANDIDATE_POOL_CHANGE',{candidatePool:40},'candidate_pool_size',40],
+ ]){
+  const o=options({type,...extra}),p=proposedChange(o)
+  assert.equal(p.valid,true);assert.deepEqual(p.afterConfig,{...o.view.run.retrieval_config,[field]:value})
+  const text=changeAnalysisPrompt(o);assert.ok(text.includes(p.summary));assert.ok(!text.includes('NEVER_EXPORT'))
+ }
+ assert.equal(proposedChange(options({type:'RETRIEVAL_MODE_CHANGE',retrievalMode:'VECTOR'})).valid,false)
+ assert.equal(proposedChange(options({type:'CONTEXT_STRATEGY_CHANGE',contextStrategy:'PARENT'})).valid,false)
+ assert.equal(proposedChange(options({type:'CANDIDATE_POOL_CHANGE',candidatePool:20})).valid,false)
+ assert.equal(proposedChange(options({type:'CANDIDATE_POOL_CHANGE',candidatePool:40.5})).valid,false)
+})
+
+test('index plans bind the exact compatible candidate and reject a second factor',async()=>{
+ const {compatibleChangeIndices}=await import('../src/change-analysis-prompt.js')
+ const o=options({type:'EMBEDDING_CHANGE'}),old=o.view.run.controls.index_snapshot
+ Object.assign(old,{knowledge_hash:'same-policy',chunks:[{chunk_id:'stable',text:'policy'}]})
+ const next={...structuredClone(old),index_id:'bge',embedding_snapshot:{model:'chinese',index_generation:'new'}}
+ assert.equal(proposedChange({...o,index:next}).valid,true)
+ assert.equal(proposedChange({...o,index:next}).targetIndexId,'bge')
+ assert.deepEqual(compatibleChangeIndices(o.view,o.type,[old,next,{...next,knowledge_version:2},{...next,chunk_config:{chunk_size:500}},{...next,chunks:[]}]).map(i=>i.index_id),['bge'])
+ const chunk={...structuredClone(old),index_id:'section',chunk_config:{...old.chunk_config,algorithm:'source-section-v1'},chunks:[{chunk_id:'new'}]}
+ assert.equal(proposedChange({...o,type:'CHUNKING_CHANGE',index:chunk}).valid,true)
+ assert.equal(proposedChange({...o,type:'CHUNKING_CHANGE',index:{...chunk,embedding_snapshot:{model:'chinese'}}}).valid,false)
+})
+
+test('evidence guidance distinguishes unknown knowledge from a loss after candidate recall',async()=>{
+ const {changeEvidenceSummary,changeOptions,groupedChangeOptions}=await import('../src/retrieval-change-options.js')
+ assert.equal(new Set(changeOptions.map(o=>o.value)).size,10)
+ assert.equal(groupedChangeOptions.flatMap(g=>g.options).length,10)
+ const v=fixture();assert.match(changeEvidenceSummary(v,'one').observation,/尚未审核/)
+ assert.equal(changeEvidenceSummary(v,'one').stages[0].text,'本次未记录')
+ v.run.case_results[0].evidence_path={knowledge:{status:'FULL'},candidates:{status:'FULL'},context:{status:'PARTIAL'}}
+ assert.match(changeEvidenceSummary(v,'one').observation,/已进入候选/)
+ assert.match(changeEvidenceSummary(v,'one').observation,/尚不能确认唯一原因/)
+})

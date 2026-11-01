@@ -2,9 +2,9 @@
 import {computed} from 'vue'
 import {checkLabels,taskLabels,behaviorLabels,stageLabels,sourceLabels,ratioText,comparisonMessage} from '../trusted-results.js'
 import {questionLabel} from '../question-navigation.js'
-import {evidenceReasons} from '../evidence-explanation.js'
+import {evidenceReasons,explainEvidenceItem} from '../evidence-explanation.js'
 const props=defineProps({view:Object,comparison:Object,caseId:String})
-const emit=defineEmits(['inspect-case'])
+const emit=defineEmits(['inspect-case','answer-setup','review'])
 const trust=computed(()=>props.comparison?.trust_summary)
 const flow=computed(()=>props.view?.trusted_result?.sample_flow||props.view?.run?.sample_flow)
 const identity=computed(()=>props.view?.trusted_result?.experiment_identity||props.view?.run?.experiment_identity)
@@ -18,14 +18,14 @@ const judgeLabels={HUMAN_REVIEW:'人工复核',MACHINE:'评分模型',EXECUTABLE
 const changeLabels={QUERY_REWRITE_TOGGLE:'改写查询',RERANK_TOGGLE:'调整排序',TOP_K_CHANGE:'调整返回条数',KNOWLEDGE_UPDATE:'更新知识库'}
 </script>
 <template>
- <section v-if="caseId&&current" class="trusted-case" aria-label="本题状态与证据边界">
-  <h4>这题为什么这样判？</h4><p><strong>{{checkLabels[current.evaluation_state]}}</strong> · {{judgeLabels[current.judged_by]||'未记录判定来源'}}</p><p>问题解决情况：{{taskLabels[current.task_outcome]}} · 回答方式：{{behaviorLabels[current.current_turn_behavior]||'未记录'}}</p>
+ <section v-if="caseId&&view?.run?.verify_answers===false" class="trusted-case" aria-label="本轮未检查回答"><h4>本轮还没有回答评分</h4><p>这次只检查了资料查找，没有生成客服回答，因此没有回答对错、客户问题是否解决等结论。</p><p>要检查回答，请准备一次包含回答的评测。</p><button type="button" class="text-button" @click="emit('answer-setup')">去准备包含回答的新初测 →</button></section>
+ <section v-else-if="caseId&&current" class="trusted-case" aria-label="本题状态与证据边界">
+  <h4>这题为什么这样判？</h4><p><strong>{{checkLabels[current.evaluation_state]}}</strong> · {{judgeLabels[current.judged_by]||'未记录判定来源'}}</p>
   <p v-if="current.task_outcome!=='COMPLETED'&&['CLARIFY','HANDOFF','REFUSE','REASONABLE_CLARIFICATION','REASONABLE_REFUSAL','REASONABLE_HANDOFF','REFUSED_OR_ESCALATED'].includes(current.current_turn_behavior)" class="muted">这次追问或转交可能是合理的，但客户的问题还没有解决。</p>
-  <p v-if="input?.missing_items.length" class="note warning">还缺这些资料：{{input.missing_items.join('；')}}</p>
-  <p v-if="input?.truncated_items.length" class="note warning">部分输入过长或被截断，本次可能缺少关键资料。</p>
+  <div v-if="input?.missing_items?.length" class="note warning"><p v-for="(item,i) in input.missing_items" :key="i"><strong>{{explainEvidenceItem(item).message}}</strong><br />{{explainEvidenceItem(item).nextStep}}</p><button type="button" class="text-button" @click="emit('review')">打开本题政策核对清单 →</button></div>
+  <p v-if="input?.truncated_items?.length" class="note warning">部分输入过长或被截断，本次可能缺少关键资料。</p>
   <div v-if="currentReasons.length" class="evidence-reasons"><div v-for="r in currentReasons" :key="r.code"><p><strong>{{r.message}}</strong></p><p>{{r.next_step}}</p></div></div>
-  <details><summary>逐项检查结果</summary><ul class="check-list"><li v-for="c in current.checks" :key="c.name">{{({retrieval:'有没有查到资料',generation:'有没有生成回答',evidence:'资料是否适用于这道题',quality:'回答是否符合规则',critical_errors:'有没有严重问题',business_tools:'是否执行了业务操作'})[c.name]}}：{{checkLabels[c.status]}}<small v-if="c.rule"> · 此客服不能实际查订单或退款</small></li></ul><p class="muted">失败的检查项可以帮你缩小范围，还需要核对原文才能确定原因。</p></details>
-  <details v-if="input"><summary>这次评分用的资料</summary><p>来源：{{sourceLabels[input.source_type]||'未知'}}。实际交互记录也不一定代表线上流量。</p><p>资料是否齐全：{{input.check.reference_completeness_status}} · {{input.reference_completeness?.reason||'没有人工核对说明'}}</p><p v-for="(issue,i) in input.check.issues" :key="i" class="note warning">{{issue.scope}} / {{issue.evidence_id}}：{{issue.reason}}</p><details><summary>版本与原始标识</summary><p>输入 {{input.input_id}} · 上一版本 {{input.parent_input_id||'未记录'}}</p><p>会话 {{input.conversation_id||'未记录'}} · 第 {{input.turn_id||'未知'}} 轮 · 提问时间 {{input.question_time||'未记录'}} · 时区 {{input.question_timezone||'未记录'}}</p><p v-if="input.truncated_items.length">截断记录：{{JSON.stringify(input.truncated_items)}}</p><p>原文与校验值均保留。引用能对上原文，不代表它一定支持这句回答。</p></details></details>
+  <details><summary>逐项检查结果</summary><ul class="check-list"><li v-for="c in current.checks.filter(c=>c.name!=='business_tools')" :key="c.name">{{({retrieval:'有没有查到资料',generation:'有没有生成回答',evidence:'资料是否适用于这道题',quality:'回答是否符合规则',critical_errors:'有没有严重问题',business_tools:'工具记录'})[c.name]}}：{{checkLabels[c.status]}}</li></ul><p class="muted">失败的检查项可以帮你缩小范围，还需要核对原文才能确定原因。</p></details>
  </section>
  <section v-else-if="view&&flow" class="panel trusted-results" aria-label="可信结果与样本流转">
   <h2>评测结果</h2><p v-if="view.trusted_result?.historical_metadata_unknown" class="note warning">这份旧记录没有保存部分信息，缺少的项目显示为未知。</p>

@@ -13,6 +13,7 @@ from .canonical import text_hash
 
 SEMANTIC = 'all-MiniLM-L6-v2'
 LEXICAL = 'sha256-lexical-bigram-v1'
+CHINESE = 'BAAI/bge-small-zh-v1.5'
 _lock = RLock()
 _state = None
 
@@ -53,6 +54,10 @@ def semantic_state():
             raise EmbeddingFailure('EMBEDDING_MODEL_UNAVAILABLE') from exc
 
 def snapshot(model=SEMANTIC):
+    if model == CHINESE:
+        from .bge_embeddings import snapshot as chinese_snapshot
+        try:return chinese_snapshot()
+        except Exception:raise EmbeddingFailure('CHINESE_EMBEDDING_NOT_PREPARED') from None
     if model == LEXICAL:
         return legacy.embedding_snapshot()
     if model != SEMANTIC:
@@ -78,6 +83,9 @@ def snapshot(model=SEMANTIC):
                 'tokenizers_version':tokenizers.__version__}}
 
 def encode(texts, model=SEMANTIC):
+    if model == CHINESE:
+        from .bge_embeddings import encode as chinese_encode
+        return chinese_encode(texts)
     if model == LEXICAL:
         return [legacy.embed(text) for text in texts]
     if model != SEMANTIC:
@@ -106,10 +114,11 @@ def encode(texts, model=SEMANTIC):
 
 def model_for(index):
     model = index.embedding_snapshot.get('model')
-    if model not in (SEMANTIC, LEXICAL):
+    if model not in (SEMANTIC, LEXICAL, CHINESE):
         raise ValueError('Unsupported frozen embedding model')
     return model
 
 def description(config):
+    if config.get('model') == CHINESE:return '本地中文语义模型 '+CHINESE
     return ('本地语义模型 '+SEMANTIC if config.get('model') == SEMANTIC
             else '本地词汇向量 '+str(config.get('model', '未知')))

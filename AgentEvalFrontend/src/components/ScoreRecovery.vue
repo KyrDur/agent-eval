@@ -5,17 +5,18 @@ import ScoringEvidence from './ScoringEvidence.vue'
 import TraceCall from './TraceCall.vue'
 import EvaluationLogExport from './EvaluationLogExport.vue'
 const props=defineProps({view:Object,caseId:String})
-const work=inject('workspace'),available=ref(false),jobs=ref([]),detail=ref(null),preview=ref(null),busy=ref(false),error=ref(''),pending=ref(null),revision=ref('')
+const work=inject('workspace'),available=ref(false),detail=ref(null),preview=ref(null),busy=ref(false),error=ref(''),pending=ref(null)
 let timer=null,generation=0
 const session=computed(()=>work.state.session)
 const ready=computed(()=>session.value?.credential_status==='PRESENT'&&session.value?.text_connection_status==='READY')
-const reports=computed(()=>detail.value?.reports||[])
-const report=computed(()=>reports.value.find(r=>r.report_id===revision.value)||detail.value?.report)
+const report=computed(()=>detail.value?.report)
 const adopted=computed(()=>report.value?.adoption_manifest.find(r=>r.case_id===props.caseId))
 const result=computed(()=>adopted.value?{scoring_protocol:{calibration_status:'INITIAL_UNVALIDATED'},evidence_evaluation:adopted.value.result}:null)
 const attempts=computed(()=>(detail.value?.events||[]).filter(e=>e.case_id===props.caseId&&e.phase!=='STARTED').sort((a,b)=>a.number-b.number))
 const active=computed(()=>detail.value&&['QUEUED','RUNNING'].includes(detail.value.job.status)&&!detail.value.interrupted)
 const eligible=computed(()=>props.view?.run.controls.scoring_profile&&props.view?.effective_answer_results.some(a=>a.case_id===props.caseId&&a.execution_status==='SUCCESS'))
+const handoffCase=computed(()=>props.view?.run.controls.eval_set_snapshot?.cases.find(c=>c.case_id===props.caseId)?.scenario_rules?.template_id==='MISSING_KNOWLEDGE')
+const retrieval=computed(()=>props.view?.run.case_results.find(c=>c.case_id===props.caseId))
 const labels={PASS:'通过',FAIL:'不通过',EVIDENCE_INSUFFICIENT:'资料不足',EXECUTION_FAILED:'评分失败',NOT_RUN:'待评分'}
 async function readJob(id,token=generation){
  const value=await api.get(`/scoring-jobs/${encodeURIComponent(id)}`)
@@ -23,16 +24,15 @@ async function readJob(id,token=generation){
  detail.value=value
  if(['QUEUED','RUNNING'].includes(value.job.status)&&!value.interrupted)timer=setTimeout(()=>readJob(id,token).catch(e=>{if(token===generation)error.value=e.message}),1200)
 }
-async function chooseJob(event){clearTimeout(timer);generation++;revision.value='';detail.value=null;try{await readJob(event.target.value)}catch(e){error.value=e.message}}
 async function load(){
- const token=++generation;clearTimeout(timer);detail.value=null;preview.value=null;error.value='';pending.value=null;revision.value=''
+ const token=++generation;clearTimeout(timer);detail.value=null;preview.value=null;error.value='';pending.value=null
  if(!props.view?.run.run_id||!props.caseId)return
  try{
   await api.get('/judge-contract');if(token!==generation)return;available.value=true
   const history=await api.get(`/retrieval-runs/${encodeURIComponent(props.view.run.run_id)}/scoring-jobs`)
   if(token!==generation)return
-  jobs.value=history.filter(j=>j.case_ids.includes(props.caseId)).sort((a,b)=>a.created_at.localeCompare(b.created_at))
-  if(jobs.value.length)await readJob(jobs.value.at(-1).job_id,token)
+  const latest=history.filter(j=>j.case_ids.includes(props.caseId)).sort((a,b)=>a.created_at.localeCompare(b.created_at)).at(-1)
+  if(latest)await readJob(latest.job_id,token)
  }catch(e){if(token===generation){if(e.status===404)available.value=false;else error.value=e.message}}
 }
 watch(()=>[props.view?.run.run_id,props.caseId],load,{immediate:true})
@@ -43,7 +43,7 @@ async function start(){
  busy.value=true;error.value=''
  const p=preview.value
  if(!pending.value)pending.value={request_id:crypto.randomUUID(),case_ids:[props.caseId],provider_session_id:session.value.provider_session_id,max_attempts:2,protocol_hash:p.protocol_hash,request_budget:p.maximum_requests,token_budget:p.maximum_requests*p.token_reservation_per_attempt}
- try{detail.value=await api.post(`/retrieval-runs/${props.view.run.run_id}/scoring-jobs`,pending.value);if(!jobs.value.some(j=>j.job_id===detail.value.job.job_id))jobs.value.push(detail.value.job);preview.value=null;await readJob(detail.value.job.job_id)}catch(e){error.value=e.message}finally{busy.value=false}
+ try{detail.value=await api.post(`/retrieval-runs/${props.view.run.run_id}/scoring-jobs`,pending.value);preview.value=null;await readJob(detail.value.job.job_id)}catch(e){error.value=e.message}finally{busy.value=false}
 }
 async function resume(){busy.value=true;error.value='';try{detail.value=await api.post(`/scoring-jobs/${detail.value.job.job_id}/resume`);await readJob(detail.value.job.job_id)}catch(e){error.value=e.message}finally{busy.value=false}}
 async function download(){try{const file=await api.download(`/score-reports/${report.value.report_id}/export`);const url=URL.createObjectURL(file.blob),a=document.createElement('a');a.href=url;a.download=file.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){error.value=e.message}}
@@ -57,18 +57,17 @@ async function download(){try{const file=await api.download(`/score-reports/${re
   <p v-if="detail?.interrupted" class="note">评分进程已中断。恢复会跳过已完成题；发送情况未知的请求会保留为未知。</p>
   <button v-if="detail?.interrupted" type="button" class="secondary" :disabled="busy" @click="resume">恢复未完成任务</button>
   <p v-if="detail?.job.last_error" class="note">{{detail.job.last_error}}</p>
-  <label v-if="jobs.length>1">评分任务<select :value="detail?.job.job_id" :disabled="busy" @change="chooseJob"><option v-for="j in jobs" :key="j.job_id" :value="j.job_id">{{j.created_at}} · {{j.status}}</option></select></label>
   <template v-if="report">
-   <label>评分修订<select v-model="revision"><option value="">最近修订</option><option v-for="r in reports" :key="r.report_id" :value="r.report_id">修订 {{r.score_revision}}</option></select></label>
-   <p><strong>新协议 · {{labels[adopted?.evaluation_state]||'待评分'}}</strong> · 形成判定 {{report.summary.coverage.numerator}}/{{report.summary.coverage.denominator}} 题 · 通过 {{report.summary.pass_rate.numerator}}/{{report.summary.pass_rate.denominator}} 题</p>
+   <p><strong>最新评分 · {{labels[adopted?.evaluation_state]||'待评分'}}</strong> · 形成判定 {{report.summary.coverage.numerator}}/{{report.summary.coverage.denominator}} 题 · 通过 {{report.summary.pass_rate.numerator}}/{{report.summary.pass_rate.denominator}} 题</p>
+   <p v-if="handoffCase" class="muted">本题检查能否诚实说明未知并引导人工；通过表示兜底符合要求。</p>
    <p class="muted">仅限本协议所选题目；评分变化不代表 Agent 能力提升。</p>
-   <ScoringEvidence :result="result" /><button type="button" class="secondary" @click="download">下载本修订 CSV</button>
+   <ScoringEvidence :result="result" :retrieval="retrieval" :top-k="view.run.retrieval_config?.top_k" :documents="view.run.controls.knowledge_snapshot?.documents" /><button type="button" class="secondary" @click="download">下载评分结果 CSV</button>
    <details><summary>历次评分尝试 · {{attempts.length}} 次</summary><article v-for="attempt in attempts" :key="attempt.attempt_id"><h5>第 {{attempt.number}} 次 · {{attempt.result?.error||attempt.result?.judgment?.verdict||attempt.phase}}</h5><p v-for="(i,index) in attempt.result?.validation_issues||[]" :key="index"><code>{{i.field_path}}</code> · {{i.code}} · 实际值 {{JSON.stringify(i.actual)}}</p><TraceCall v-for="(call,index) in attempt.traces" :key="call.call_id" :call="{...call,request_number:index+1,validation_issues:attempt.result?.validation_issues}" :step-status="attempt.result?.status==='SUCCESS'?'SUCCESS':'FAILED'" /></article></details>
-   <details><summary>复制这份评分修订的日志</summary><EvaluationLogExport :key="report.report_id" :view="view" :score-report="report" /></details>
+   <details><summary>完整评分日志</summary><EvaluationLogExport :key="report.report_id" :view="view" :score-report="report" /></details>
   </template>
   <p v-if="error" class="note danger" role="alert">{{error}}</p>
  </section>
 </template>
 <style scoped>
-.score-recovery{padding:16px 0;border-top:1px solid var(--color-line,#ddd);margin-top:20px;overflow-wrap:anywhere}.score-recovery details{margin-top:16px}.score-recovery article{padding:12px 0;border-top:1px solid var(--color-line,#ddd)}.score-recovery select{max-width:100%}
+.score-recovery{padding:16px 0;border-top:1px solid var(--color-line,#ddd);margin-top:20px;overflow-wrap:anywhere}.score-recovery details{margin-top:16px}.score-recovery article{padding:12px 0;border-top:1px solid var(--color-line,#ddd)}
 </style>

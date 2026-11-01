@@ -8,6 +8,7 @@ from .career_models import ProjectContext
 CHANGE_NAMES = {
     'RERANK_TOGGLE': '知识重排', 'QUERY_REWRITE_TOGGLE': '问题改写',
     'TOP_K_CHANGE': '返回资料数量', 'TOP_K': '返回资料数量',
+    'CHUNKING_CHANGE':'切块策略','EMBEDDING_CHANGE':'向量模型','RETRIEVAL_MODE_CHANGE':'检索模式','CONTEXT_STRATEGY_CHANGE':'上下文补全','CANDIDATE_POOL_CHANGE':'候选池大小',
     'ANSWER_PROMPT_CHANGE': '回答要求', 'KNOWLEDGE_UPDATE': '知识资料版本',
 }
 

@@ -158,7 +158,7 @@ if __name__=='__main__':
     frontend=Path(__file__).resolve().parents[1]
     python_root=frontend.parent/'AgentEval'
     evidence=Path(os.environ.get('AGENTEVAL_TEST_EVIDENCE_DIR',frontend.parent/'output/e2e-captures/agent-eval'))
-    evidence.mkdir(exist_ok=True)
+    evidence.mkdir(parents=True,exist_ok=True)
     directory=Path(args.data_dir) if args.data_dir else Path(tempfile.mkdtemp(prefix='browser-',dir=evidence))
     directory.mkdir(parents=True,exist_ok=True)
     if not (directory/'skills').exists():shutil.copytree(python_root/'skills',directory/'skills')

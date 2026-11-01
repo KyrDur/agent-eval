@@ -1,4 +1,5 @@
 // Prepare text locally from saved artifacts. Never spread sessions, metadata or call traces into it.
+import {changeOptions} from './retrieval-change-options.js'
 import {checkLabels} from './trusted-results.js'
 import {changeAnalysisContext} from './change-analysis-prompt.js'
 
@@ -66,7 +67,7 @@ export function careerProjectContext({kind='RETRIEVAL',experiment={},evidence,ca
  if(experiment.comparison&&!comparison)warnings.push('当前比较与所选两次运行不对应，未纳入。')
  const change=experiment.change?.baseline_run_id===base.run.run_id?experiment.change:null
  const changes=change?{
-  记录编号:change.change_id,改法:changeNames[change.change_type]||text(change.change_type,100),应用状态:({PROPOSED:'仅保存方案，尚未应用',APPLIED:'已应用',FAILED:'应用失败',NOOP:'未发生实际变化',ROLLED_BACK:'已回退'})[change.implemented_status]||text(change.implemented_status,80),已回退:change.rollback_status==='ROLLED_BACK',对应题目:cut(change.selected_case_ids??experiment.decision?.selected_case_ids,20,'修改对应题目'),保存的方案理由:text(change.reason??experiment.decision?.selection_reason,3000,'修改理由'),理由性质:'保存的想法可能包含系统整理或 AI 建议，不等于已验证根因或用户独立推理',是否在本次复测中使用:!!after&&(after.run.change_id===change.change_id||list(after.run.applied_change_ids).includes(change.change_id)),
+  记录编号:change.change_id,改法:changeOptions.find(o=>o.value===change.change_type)?.label||changeNames[change.change_type]||text(change.change_type,100),应用状态:({PROPOSED:'仅保存方案，尚未应用',APPLIED:'已应用',FAILED:'应用失败',NOOP:'未发生实际变化',ROLLED_BACK:'已回退'})[change.implemented_status]||text(change.implemented_status,80),已回退:change.rollback_status==='ROLLED_BACK',对应题目:cut(change.selected_case_ids??experiment.decision?.selected_case_ids,20,'修改对应题目'),保存的方案理由:text(change.reason??experiment.decision?.selection_reason,3000,'修改理由'),理由性质:'保存的想法可能包含系统整理或 AI 建议，不等于已验证根因或用户独立推理',是否在本次复测中使用:!!after&&(after.run.change_id===change.change_id||list(after.run.applied_change_ids).includes(change.change_id)),
  } : null
  if(changes&&kind==='RETRIEVAL'){
   changes.修改前=config(change.before_config);changes.修改后=config(change.after_config)
@@ -76,11 +77,12 @@ export function careerProjectContext({kind='RETRIEVAL',experiment={},evidence,ca
  if(changes&&kind!=='RETRIEVAL')changes.调整的组件=text(change.affected_component,200)
  const selectedEvidence=evidence?.baseline_run_id===base.run.run_id&&evidence?.experiment_type===kind&&evidence?.retest_run_id===(after?.run.run_id||null)&&evidence?.comparison_id===(comparison?.comparison_id||null)?evidence:null
  const matchingView=careerView?.evidence_object_id===selectedEvidence?.evidence_object_id&&selectedEvidence?careerView:null
+ const trial=kind==='RETRIEVAL'&&experiment.trialResult?.flow?.inputs?.baseline_run_id===base.run.run_id?experiment.trialResult:null
  const knowledge=base.run.controls?.knowledge_snapshot,index=base.run.controls?.index_snapshot
  const context={
   项目设定:{名称:'电商客服 Agent 评测与优化实践',项目性质:'个人实践，基于现有平台进行评测与优化',实践工作台的目标用户:'18–24 岁、缺少项目经历的求职者',工作台解决的问题:'缺少能够亲自操作、验证和复盘的 AI 产品项目经历，难以在简历与面试中说明自己的工作和判断。',实验场景:'模拟电商客服，面向咨询商品、配送和售后政策的购物者；这与工作台的求职者用户不同。',我的角色:'产品设计',AI与RAG的用途:kind==='RETRIEVAL'?'AI 理解自然语言并组织回答；RAG 从店铺资料中检索相关内容，供客服据此回答和核对。是否使用重排、查询改写、工具等，以本轮记录为准。':'本轮检查客服行为与工具调用，不使用知识检索。不要将这一轮写成已做 RAG 检索实验。',能力归属:'平台已提供知识导入、检索、作答、评分与对比。不能把使用平台写成亲自开发整套系统，也不能把 AI 生成或预设题写成独立设计。',上线与用户:'当前记录不能证明真实用户规模、商业上线、收入、业务增长或显著性。'},
   实验类型:kind==='RETRIEVAL'?'客服知识问答与检索':'客服行为与工具调用',
-  已保存的操作:[{操作:'运行初测并保存过程',记录编号:base.run.run_id},...(change?[{操作:'保存修改方案',记录编号:change.change_id}]:[]),...(change?.implemented_status==='APPLIED'?[{操作:'应用修改',记录编号:change.change_id}]:[]),...(after?[{操作:'运行复测并保存过程',记录编号:after.run.run_id}]:[]),...(comparison?[{操作:'保存前后比较',记录编号:comparison.comparison_id}]:[])],
+  已保存的操作:[{操作:'运行初测并保存过程',记录编号:base.run.run_id},...(change?[{操作:'保存修改方案',记录编号:change.change_id}]:[]),...(change?.implemented_status==='APPLIED'?[{操作:'应用修改',记录编号:change.change_id}]:[]),...(trial?[{操作:'先快速试当前题',记录编号:trial.view?.run.run_id,范围:'仅所选题，不是整批复测'}]:[]),...(after?[{操作:'运行复测并保存过程',记录编号:after.run.run_id}]:[]),...(comparison?[{操作:'保存前后比较',记录编号:comparison.comparison_id}]:[])],
   原始初测:runRecord(base,'初测'),
   已保存的修改:changes,
   复测:after?runRecord(after,'复测'):'尚无对应复测记录，不能写优化后提升',
@@ -93,6 +95,7 @@ export function careerProjectContext({kind='RETRIEVAL',experiment={},evidence,ca
   const d=experiment.decision
   context.已保存的决策={记录编号:d.decision_id,根因假设:text(d.user_confirmed_root_cause,1200),假设依据:text(d.root_cause_reason,1200),选择理由:text(d.selection_reason,1200),副作用:text(d.possible_side_effects,800),性质:'已保存的本人判断，根因仍需独立验证；不当作实测结果'}
  }
+ if(trial?.view)context.单题试跑={范围:'仅试跑所选题，不能据此判断整体改善',记录:runRecord(trial.view,'单题试跑')}
  if(knowledge)context.本轮知识资料={版本:knowledge.version,文档数量:list(knowledge.documents).length,资料目录:cut(knowledge.documents,30,'知识目录').map(d=>({编号:text(d.document_id,150),标题:text(d.title,180)})),切分方式:{片段长度:known(index?.chunk_config?.chunk_size),重叠长度:known(index?.chunk_config?.chunk_overlap)},向量模型:text(index?.embedding_snapshot?.model,150)}
  // Reuse the saved single-case context only for the changed case, to explain a choice without full logs.
  if(kind==='RETRIEVAL'&&change&&changeNames[change.change_type]){

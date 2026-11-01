@@ -1,0 +1,5 @@
+# Optional isolated CPU encoder; install in .venv-rag-model, not service runtime.
+torch==2.8.0
+transformers==4.57.1
+tokenizers==0.22.2
+safetensors==0.8.0

@@ -13,3 +13,12 @@ test('Switching service resets DeepSeek-specific settings; custom and restored e
   assert.equal(identifyPreset({ ...presetConfig('deepseek'), model: 'private-model' }), 'deepseek')
   assert(!JSON.stringify(modelPresets).includes('api_key'))
 })
+
+
+test('only explicit acceptance model names trigger a fresh connection preset',async()=>{
+ const {isAcceptanceConnection}=await import('../src/model-presets.js')
+ assert.equal(isAcceptanceConnection({model:'retrieval-only-local-readiness-fixture'}),true)
+ assert.equal(isAcceptanceConnection({model:'phase4-rag'}),true)
+ assert.equal(isAcceptanceConnection({base_url:'http://127.0.0.1:1234/v1',model:'my-local-model'}),false)
+ assert.equal(isAcceptanceConnection({model:'deepseek-flash'}),false)
+})

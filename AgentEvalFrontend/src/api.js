@@ -1,6 +1,23 @@
 import {analytics} from './analytics.js'
 import {operationFor} from './analytics-operations.js'
 const errors = {
+  TRIAL_PLAN_CHANGED:['方案已改变，请先重新试本题','全部复测会使用与本题试跑相同的配置。'],
+  TRIAL_SCOPE_INVALID:['本题试跑范围不正确','请从原实验中选择一道已完成的调试题。'],
+  BASELINE_IMPLEMENTATION_CHANGED:['初测使用的是旧版执行程序','旧记录继续保留，请用原资料重新初测，再在相同版本中做单变量复测。'],
+  FLOW_SCOPE_INVALID:['确认范围与原题不一致','请重新读取初测后选择本次观察题。原记录已保留。'],
+  FLOW_CHANGE_SCOPE_INVALID:['本次改动超出一个变量','请核对参数差异后再运行；没有发起复测。'],
+  FLOW_INDEX_SCOPE_INVALID:['资料准备范围不明确','请选择已有的对照资料，或由系统按已说明的参数准备。'],
+  FLOW_RECONCILE_REQUIRED:['需要核对已有回执','读取原任务后再继续；不要重新提交新的评测。'],
+
+  DIAGNOSTIC_BASELINE_ANSWER_REQUIRED:['还没有可比较的原回答','先完成包含回答的初测，再用指定政策原文做诊断对照。'],
+  CHINESE_EMBEDDING_NOT_PREPARED:['中文检索模型尚未准备','先安装独立编码环境并下载固定版本 BGE，再重试建索引。已保存知识保留。'],
+  DEEPEVAL_NOT_PREPARED:['DeepEval 旁路尚未准备','先安装独立的 DeepEval 4.3.1 环境；原评测仍可正常查看。'],
+  DIAGNOSTIC_SOURCE_MISMATCH:['原文不匹配','请从本轮冻结政策中复制连续原文，保留条件与例外。'],
+  PROVIDER_CONFIG_CHANGED:['模型配置已变化','诊断对照需要与原评测保持相同的模型配置，请恢复原配置或重新初测。'],
+
+  RUN_RECEIPT_NOT_FOUND:['暂未找到这次提交回执','可以重新读取；如需重试提交，请沿用原来的参数和请求编号。'],
+  PENDING_EVALUATION_EXISTS:['上次提交仍待确认','请先读取上次评测；需要重试提交时，请使用原来的参数和请求编号，避免重复运行。'],
+  RECORD_READ_TIMEOUT:['读取记录超时','可以重试，或选择开始新实验。已保存的实验记录仍然保留。'],
   SCORING_PROTOCOL_CHANGED:['评分协议已更新','请重新预览并创建新协议任务。原尝试和报告保留。'],
   SCORING_SCOPE_INVALID:['评分范围不正确','请选择本次已执行的题目。'],
   SOURCE_HASH_MISMATCH:['封存内容校验失败','评分已停止，请核对本次运行记录。'],
@@ -128,27 +145,55 @@ export class ApiError extends Error {
     this.code = Object.hasOwn(errors, code) ? code : 'API_ERROR'
   }
 }
+// Bound optional recovery reads, including a response body that never finishes.
+// Racing the signal also protects callers when a transport ignores cancellation.
+function abortable(promise, signal) {
+  if (!signal) return promise
+  return new Promise((resolve,reject)=>{
+    const stop=()=>{cleanup();reject(new ApiError('RECORD_READ_TIMEOUT',0))}
+    const cleanup=()=>signal.removeEventListener('abort',stop)
+    if(signal.aborted){stop();return}
+    signal.addEventListener('abort',stop,{once:true})
+    Promise.resolve(promise).then(value=>{cleanup();signal.aborted?stop():resolve(value)},error=>{cleanup();reject(error)})
+  })
+}
 export function createApi(fetcher = globalThis.fetch) {
   async function request(path, body, meta) {
     const specification=operationFor(path,body,meta)
     const operation=specification?analytics.begin(specification):null
+    const controller=meta?.timeoutMs?new AbortController():null
+    const signal=controller?.signal || meta?.signal
+    const forward=()=>controller?.abort()
+    if(controller&&meta?.signal){if(meta.signal.aborted)forward();else meta.signal.addEventListener('abort',forward,{once:true})}
+    const timer=controller?setTimeout(()=>controller.abort(),meta.timeoutMs):null
+    try {
     let response
     try {
-      response = await fetcher('/api/experiments' + path, {
+      if(signal?.aborted)throw new ApiError('RECORD_READ_TIMEOUT',0)
+      response = await abortable(fetcher('/api/experiments' + path, {
         method: body === undefined ? 'GET' : 'POST',
         headers: { 'Content-Type': 'application/json',...operation?.headers },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         cache: 'no-store',
-      })
-    } catch { analytics.end(operation,true);throw new ApiError(null, 0) }
+        ...(signal?{signal}:{}),
+      }),signal)
+    } catch { analytics.end(operation,true);throw new ApiError(signal?.aborted?'RECORD_READ_TIMEOUT':null, 0) }
     let data
-    try { data = await response.json() } catch { analytics.end(operation,false,true);throw new ApiError(null, response.status) }
+    try { data = await abortable(response.json(),signal) } catch { analytics.end(operation,false,true);throw new ApiError(signal?.aborted?'RECORD_READ_TIMEOUT':null, response.status) }
     analytics.end(operation,false,!response.ok || ['FAILED','AUTH_FAILED','PARTIAL'].includes(data?.status))
     if (!response.ok) throw new ApiError(typeof data.detail === 'string' ? data.detail : null, response.status)
     return data
+    } finally {clearTimeout(timer);meta?.signal?.removeEventListener('abort',forward)}
   }
   return {
-    get: (path, meta = {}) => request(path,undefined,meta),
+    async get(path, meta = {}) {
+      try{return await request(path,undefined,meta)}
+      catch(error){
+        // Only explicitly opted-in reads retry. Writes and cancelled reads never do.
+        if(!meta.retryReads||meta.signal?.aborted||!(error instanceof ApiError)||![0,200,502,503,504].includes(error.status))throw error
+        return request(path,undefined,meta)
+      }
+    },
     post: (path, body = {}, meta = {}) => request(path, body, meta),
     async download(path) {
       let response
@@ -165,10 +210,10 @@ export function createApi(fetcher = globalThis.fetch) {
       if(!blob.size)throw new ApiError('CSV_DOWNLOAD_FAILED',response.status)
       return {blob,filename:filename.replace(/[\\/\u0000-\u001f]/g,'_'),rowCount:response.headers.get('X-CSV-Row-Count')}
     },
-    async list(group) {
+    async list(group, meta = {}) {
       let offset = 0, items = [], page
       do {
-        page = await request(`/artifacts/${group}?offset=${offset}&limit=100`)
+        page = await request(`/artifacts/${group}?offset=${offset}&limit=100`,undefined,meta)
         items.push(...page.items)
         offset += page.items.length
       } while (offset < page.total && page.items.length)
@@ -180,11 +225,12 @@ export const api = createApi()
 
 // Complete cookie creation before concurrent history requests. The public ref
 // only clears stale UI pointers; it never authorizes backend access.
-export async function prepareWorkspace(storage = globalThis.localStorage, fetcher = globalThis.fetch) {
+export async function prepareWorkspace(storage = globalThis.localStorage, fetcher = globalThis.fetch, {signal} = {}) {
   let response, data
   try {
-    response = await fetcher('/api/experiments/workspace', {credentials: 'same-origin', cache: 'no-store'})
-    data = await response.json()
+    if(signal?.aborted)throw new ApiError('RECORD_READ_TIMEOUT',0)
+    response = await abortable(fetcher('/api/experiments/workspace', {credentials: 'same-origin', cache: 'no-store',...(signal?{signal}:{})}),signal)
+    data = await abortable(response.json(),signal)
   } catch { throw new ApiError(null, 0) }
   if (!response.ok) throw new ApiError(data.detail, response.status)
   if (data.isolated) {

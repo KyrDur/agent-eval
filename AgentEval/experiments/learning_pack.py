@@ -7,7 +7,7 @@ from copy import deepcopy
 from .canonical import digest
 
 PACK_ID = 'evidence-diagnosis-teaching'
-PACK_VERSION = '2026-10-16.v1'
+PACK_VERSION = '2026-10-28.v2'
 FAMILY_CODES={key:'family-'+digest({'pack':PACK_ID,'family':key})[:12] for key in ('DATA','PROMPT','RUBRIC','AGENT')}
 NOTICE = ('历史实验回放 · 封存的教学轨迹；均为构造案例，错误为教学植入，'
           '不是已发生的真实历史 API 调用或生产会话。参考分析待维护者人工确认，'
@@ -88,6 +88,11 @@ TRANSFERS = [
       [e('t1','当轮已召回：质量问题可联系售后核验，拆封不影响质量售后申请。'),e('t2','普通商品无理由退货才要求未拆封。')],[],
       {'causes':['AGENT'],'analysis':'已召回质量售后例外，却把无理由退货限制套到质量问题，优先验证生成条件区分。','support':['t1','t2'],'verification':'固定知识与评分，只改条件区分规则；同时回归普通无理由退、破损与正常商品，观察退化。'},'',{},'TRANSFER'),
 ]
+from .rag_learning_cases import build as rag_teaching_cases
+_rag_practice,_rag_transfer=rag_teaching_cases(case,e)
+CASES.extend(_rag_practice);TRANSFERS.extend(_rag_transfer)
+for _c in _rag_practice:FAMILY_CODES[_c['family_id']]='family-'+digest({'pack':PACK_ID,'family':_c['family_id']})[:12]
+
 BY_ID = {c['case_id']: c for c in CASES + TRANSFERS}
 PACK_HASH = digest({'version': PACK_VERSION, 'cases': CASES + TRANSFERS})
 
@@ -102,6 +107,6 @@ def catalog():
     return {'pack_id': PACK_ID, 'version': PACK_VERSION, 'pack_hash': PACK_HASH, 'notice': NOTICE,
             'reference_status':'DRAFT_AWAITING_MAINTAINER_REVIEW',
             'cases':[{'case_id':c['case_id'],'title':c['title']} for c in CASES],
-            'case_count':12,'practice_count':8,'transfer_count':4,
+            'case_count':len(CASES)+len(TRANSFERS),'practice_count':len(CASES),'transfer_count':len(TRANSFERS),
             'review_criteria':['证据相关','原因假设合理','验证方法能区分原因','识别结论边界'],
             'isolation_notice':'匿名工作区提供工作流隔离，不是防作弊考试系统。'}

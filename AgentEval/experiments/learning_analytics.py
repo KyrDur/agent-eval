@@ -1,7 +1,7 @@
 """Finite learning metadata only; original prose remains in workspace records."""
 from datetime import datetime,timezone,timedelta
 import hashlib,hmac
-from .learning_pack import FAMILY_CODES
+from .learning_pack import FAMILY_CODES,PACK_VERSION,CASES,BY_ID
 
 NAMES={'practice_started','initial_judgment_saved','hint_revealed','diagnosis_revised','prediction_saved','verification_completed','adoption_decided','transfer_started','transfer_submitted','transfer_feedback_revealed','feedback_recorded','practice_exited','practice_failed'}
 FIELDS={'event_id','attempt_id','name','pack_id','pack_version','case_id','family_id','mode','hint_level','sequence','independent','stage','review_status'}
@@ -15,8 +15,9 @@ def initialize(store):
 
 def record(store,identity,value):
     if not isinstance(value,dict) or set(value)!=FIELDS or value['name'] not in NAMES:return False
-    if value['pack_id']!='evidence-diagnosis-teaching' or value['pack_version']!='2026-10-16.v1':return False
-    if value['case_id'] not in {f'p{i:02d}' for i in range(1,9)} or value['family_id'] not in set(FAMILY_CODES.values()):return False
+    if value['pack_id']!='evidence-diagnosis-teaching' or value['pack_version'] not in {'2026-10-16.v1',PACK_VERSION}:return False
+    allowed={f'p{i:02d}' for i in range(1,9)} if value['pack_version']=='2026-10-16.v1' else {c['case_id'] for c in CASES}
+    if value['case_id'] not in allowed or value['family_id']!=FAMILY_CODES[BY_ID[value['case_id']]['family_id']]:return False
     if value['mode'] not in {'TRAINING','FREE'} or type(value['hint_level']) is not int or not 0<=value['hint_level']<=3:return False
     if type(value['sequence']) is not int or not 1<=value['sequence']<=10000 or type(value['independent']) is not bool:return False
     if value['review_status'] not in {'PENDING_HUMAN_REVIEW','NOT_SUBMITTED'} or value['stage']!=value['name']:return False

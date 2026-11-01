@@ -33,47 +33,36 @@ test('Restoring a same-named new EvalSet cannot attach an older experiment',asyn
   assert.equal(w.state.baseline,null);assert.ok(!calls.some(p=>p.startsWith('/retrieval-runs/')))
   assert.equal(w.state.knowledge.version,2)
 })
-test('New index clears a test set bound to the previous index',async()=>{
-  const storage={getItem:()=>null,setItem:()=>{}}
-  const work={state:{session:null},action:async(l,fn)=>fn(),go:()=>{}}
-  const w=createRetrievalWorkspace(work,storage,{post:async()=>({index_id:'new_index'})})
-  w.state.knowledge={knowledge_dataset_id:'k',version:1};w.state.index={index_id:'old_index'};w.state.evalSet={index_id:'old_index'}
-  await w.buildIndex({});assert.equal(w.state.evalSet,null);assert.equal(w.state.index.index_id,'new_index')
+const memoryStorage=()=>{const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)}}
+test('Background index keeps old selection until verified ready, then clears the old tests',async()=>{
+ const storage=memoryStorage(),work={state:{session:null},action:async(_,fn)=>fn(),go:()=>{}}
+ let receipt
+ const client={post:async(_,body)=>receipt={job_id:'job',request_id:body.request_id,status:'SUBMITTED'},get:async path=>path==='/index-tasks/job'?{...receipt,status:'READY',index_id:'new_index'}:{index_id:'new_index',knowledge_dataset_id:'k',knowledge_version:1}}
+ const w=createRetrievalWorkspace(work,storage,client)
+ w.state.knowledge={knowledge_dataset_id:'k',version:1};w.state.index={index_id:'old_index'};w.state.evalSet={index_id:'old_index'}
+ await w.buildIndex({});assert.equal(w.state.index.index_id,'old_index')
+ await w.syncIndex();assert.equal(w.state.index.index_id,'new_index');assert.equal(w.state.evalSet,null);w.dispose()
 })
-test('Preparing knowledge saves then indexes under one busy operation',async()=>{
- const calls=[],storage={getItem:()=>null,setItem:()=>{}}
- const work={state:{session:null,busy:''},action:async(label,fn)=>{
-  work.state.busy=label;try{return await fn()}finally{work.state.busy=''}
- },go:()=>{}}
- const client={post:async(path,body)=>{
-  assert.ok(work.state.busy);calls.push({path,body})
-  return path==='/knowledge-datasets'?{knowledge_dataset_id:'knowledge',version:2}:{index_id:'index_2'}
- }}
+test('Preparing knowledge saves then submits a durable background index receipt',async()=>{
+ const calls=[],storage=memoryStorage(),work={state:{session:null,busy:''},action:async(label,fn)=>{work.state.busy=label;try{return await fn()}finally{work.state.busy=''}},go:()=>{}}
+ const client={post:async(path,body)=>{assert.ok(work.state.busy);calls.push({path,body});return path==='/knowledge-datasets'?{knowledge_dataset_id:'knowledge',version:2}:{job_id:'job',request_id:body.request_id,status:'SUBMITTED'}}}
  const w=createRetrievalWorkspace(work,storage,client)
  await w.prepareKnowledge({documents:demoDocuments},{chunk_size:200,chunk_overlap:20},'sha256-lexical-bigram-v1')
- assert.deepEqual(calls.map(c=>c.path),['/knowledge-datasets','/knowledge-datasets/knowledge/index'])
+ assert.deepEqual(calls.map(c=>c.path),['/knowledge-datasets','/knowledge-datasets/knowledge/index-tasks'])
  assert.equal(calls[1].body.version,2);assert.equal(calls[1].body.embedding_model,'sha256-lexical-bigram-v1')
- assert.equal(w.state.index.index_id,'index_2');assert.equal(work.state.busy,'')
+ assert.equal(w.state.indexJob.status,'SUBMITTED');assert.equal(work.state.busy,'');w.dispose()
 })
-test('Index failure preserves saved knowledge and retry does not create another version',async()=>{
- let saved,fail=true,saves=0
- const storage={getItem:()=>saved,setItem:(_,v)=>saved=v}
- const work={state:{session:null,error:null},action:async(_,fn)=>{
-  work.state.error=null;try{return await fn()}catch(e){work.state.error=e}
- },go:()=>{}}
- const client={post:async(path,body)=>{
-  if(path==='/knowledge-datasets'){saves++;return {knowledge_dataset_id:'saved_knowledge',version:2}}
-  assert.equal(body.version,2)
-  if(fail)throw Error('index unavailable')
-  return {index_id:'retry_index'}
- }}
+test('Lost index POST preserves knowledge and retries the original request without another version',async()=>{
+ const storage=memoryStorage();let fail=true,saves=0,receipt,requests=[]
+ const work={state:{session:null,error:null},action:async(_,fn)=>{work.state.error=null;try{return await fn()}catch(e){work.state.error=e}},go:()=>{}}
+ const client={post:async(path,body)=>{if(path==='/knowledge-datasets'){saves++;return {knowledge_dataset_id:'saved_knowledge',version:2}}
+  requests.push(body.request_id);receipt={job_id:'job',request_id:body.request_id,status:'READY',index_id:'retry_index'};if(fail)throw Error('response lost');return receipt},
+  get:async path=>path==='/index-tasks/job'?receipt:{index_id:'retry_index',knowledge_dataset_id:'saved_knowledge',knowledge_version:2}}
  const w=createRetrievalWorkspace(work,storage,client)
- w.state.index={index_id:'old'};w.state.evalSet={retrieval_eval_set_id:'old_test'}
  await w.prepareKnowledge({documents:demoDocuments},{chunk_size:200,chunk_overlap:20})
- assert.ok(work.state.error);assert.equal(w.state.index,null);assert.equal(w.state.evalSet,null)
- assert.equal(JSON.parse(saved).knowledge,'saved_knowledge');assert.equal(JSON.parse(saved).index,undefined)
- fail=false;await w.prepareKnowledge(undefined,{chunk_size:200,chunk_overlap:20})
- assert.equal(saves,1);assert.equal(w.state.index.index_id,'retry_index');assert.equal(work.state.error,null)
+ assert.ok(work.state.error);assert.equal(w.state.index,null)
+ assert.equal(JSON.parse(storage.getItem('agenteval.retrieval.v1')).knowledge,'saved_knowledge')
+ fail=false;await w.retryIndex();assert.equal(saves,1);assert.equal(requests[0],requests[1]);assert.equal(w.state.index.index_id,'retry_index');w.dispose()
 })
 test('Failed knowledge save cannot index stale knowledge as if the new content were saved',async()=>{
  const calls=[],storage={getItem:()=>null,setItem:()=>{}}

@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 import { api, ApiError } from './api.js'
 import { readPointers, savePointers, terminal } from './presentation.js'
 
-export function createWorkspace(storage = globalThis.localStorage, client = api) {
+export function createWorkspace(storage = globalThis.localStorage, client = api, {autoPoll=true} = {}) {
   const state = reactive({ step: 'welcome', session: null, evalSet: null, baseline: null, retest: null,
     decision: null, change: null, comparison: null, selectedCase: null, error: null, notice: '',
     busy: '', history: [], evalSets: [], reviewRecords: [], initialized: false })
@@ -22,8 +22,8 @@ export function createWorkspace(storage = globalThis.localStorage, client = api)
       (label==='校验测试内容' && analytics.blocked('tests.save','invalid_input'), { title: '填写内容需要检查', message: '请检查 JSON 格式及必填内容，操作未被确认为成功。', operation: label }) }
     finally { state.busy = '' }
   }
-  async function history() {
-    const [runs, sets, reviews] = await Promise.all([client.list('runs'), client.list('evalsets'), client.list('reviews')])
+  async function history(meta={}) {
+    const [runs, sets, reviews] = await Promise.all([client.list('runs',meta), client.list('evalsets',meta), client.list('reviews',meta)])
     state.history = runs; state.evalSets = sets; state.reviewRecords = reviews
   }
   async function loadRun(id) { return client.get('/runs/' + id) }
@@ -51,6 +51,7 @@ export function createWorkspace(storage = globalThis.localStorage, client = api)
   }
   function pollKnownRun() {
     clearTimeout(pollTimer)
+    if(!autoPoll)return
     const pending = [state.baseline, state.retest].find(v => v && !terminal(v.run.status))
     if (!pending) return
     pollTimer = setTimeout(async () => {
@@ -80,11 +81,22 @@ export function createWorkspace(storage = globalThis.localStorage, client = api)
     state.step = p.step || state.step
     state.initialized = true; persist()
   }
-  return { state, go, action, restore, history, openHistory,
+  return { state, go, action, restore, history, openHistory, resumePolling:pollKnownRun,
     initialize: async () => { await action('读取实验记录', restore); state.initialized = true },
     reset() { clearTimeout(pollTimer); Object.assign(state, { step: 'welcome', session: null, evalSet: null, baseline: null,
       retest: null, decision: null, change: null, comparison: null, selectedCase: null, error: null }); persist() },
     async setup(config, key) { return action('保存模型会话', async () => { state.session = await client.post('/provider-sessions', { ...config, api_key: key }); return state.session }) },
+    async connectAndCheck(config,key) {
+      return action('连接并检查模型',async()=>{
+        state.session=await client.post('/provider-sessions',{...config,api_key:key});persist()
+        const id=state.session.provider_session_id
+        const result=await client.post(`/provider-sessions/${id}/test`)
+        state.session=await client.get('/provider-sessions/'+id)
+        if(result.status!=='SUCCESS')throw new ApiError(result.status,409)
+        state.notice='当前模型连接已通过检查，可以继续准备资料。'
+        return state.session
+      })
+    },
     async testConnection() { return action('测试模型连接', async () => {
       const result = await client.post(`/provider-sessions/${state.session.provider_session_id}/test`)
       state.session = await client.get('/provider-sessions/' + state.session.provider_session_id)

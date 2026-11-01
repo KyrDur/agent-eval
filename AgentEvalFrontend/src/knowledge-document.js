@@ -25,6 +25,7 @@ export function editKnowledgeSection(document,section,value){
 }
 export function knowledgeSource(document){
  const metadata=document.metadata||{}
+ if(metadata.source==='REFERENCE_ANSWER_SUPPLEMENT')return '根据参考答案补充'
  if(metadata.source==='AI_GENERATED_SIMULATION')return 'AI 生成的模拟资料'
  if(metadata.purpose==='DEMO_POLICY_NOT_BUSINESS_COMMITMENT')return '示例资料'
  if(metadata.source==='USER_UPLOADED')return '用户上传'

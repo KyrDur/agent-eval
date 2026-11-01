@@ -1,0 +1,1062 @@
+{
+  "schema_version": "RAG_POLICY_PACK_V1",
+  "pack_id": "rag-policy-v1",
+  "name": "模拟店铺 · 完整政策知识包",
+  "review_status": "DRAFT_AWAITING_HUMAN_REVIEW",
+  "source": "CODEX_AUTHORED_SIMULATION",
+  "notice": "用于实验的模拟政策，不代表真实店铺承诺；所有参考答案和事实映射均待人工核对。保留题用于同政策新情境验证，当前未进行锁定研究。",
+  "documents": [
+    {
+      "document_id": "returns",
+      "title": "退货适用与例外",
+      "text": "# 退货适用与例外\n## 条款 r1\n普通实物商品自签收次日起七日内，可申请无理由退货。\n\n## 条款 r2\n商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。\n\n## 条款 r3\n按消费者要求定制的商品不适用无理由退货。\n\n## 条款 r4\n质量问题不受无理由退货例外限制，应转质量售后核验。\n\n## 条款 r5\n办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "refund",
+      "title": "退款进度与路径",
+      "text": "# 退款进度与路径\n## 条款 r1\n退货入库并审核通过后，退款在五至七个工作日内原路退回。\n\n## 条款 r2\n寄出退货不等于审核通过或退款完成；应先核验退货签收和审核状态。\n\n## 条款 r3\n系统没有支付渠道到账记录时，不得承诺已经到账；超过七个工作日可转人工核查。\n\n## 条款 r4\n退款金额以订单实付及审核记录为准，不能按商品标价推算。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "coupon",
+      "title": "优惠券与退款",
+      "text": "# 优惠券与退款\n## 条款 r1\n店铺券仅用于订单抵扣，不折现；部分退货的退款金额以该商品分摊后的实付金额为准。\n\n## 条款 r2\n整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。\n\n## 条款 r3\n部分退货不退回整张优惠券；不得同时承诺按原价退款与全额返券。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "freight",
+      "title": "退货运费",
+      "text": "# 退货运费\n## 条款 r1\n普通无理由退货的寄回运费由消费者承担。\n\n## 条款 r2\n经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。\n\n## 条款 r3\n运费险是否赔付及赔付金额由保险审核决定，店铺不能保证全额赔付。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "warranty",
+      "title": "保修范围",
+      "text": "# 保修范围\n## 条款 r1\n标准电子产品保修期为签收之日起十二个月，非人为质量故障可申请维修。\n\n## 条款 r2\n进水、摔坏和未经授权拆修不在免费保修范围内，应先检测后报价。\n\n## 条款 r3\n先核验订单号、购买时间、型号和故障表现；不得索要账户明文密码。\n\n## 条款 r4\n本模拟店铺资料未约定跨境或全球联保；应说明无法确认并转人工。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "logistics",
+      "title": "物流异常",
+      "text": "# 物流异常\n## 条款 r1\n揽收后连续四十八小时无物流更新，可以提供订单号和运单号申请核查。\n\n## 条款 r2\n物流无更新不等于包裹已丢失；未经承运人确认不得承诺补发或赔付。\n\n## 条款 r3\n显示签收但用户未收到时，先核验地址、代收点和签收信息，再交承运人调查。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "address",
+      "title": "修改地址与取消",
+      "text": "# 修改地址与取消\n## 条款 r1\n仓库尚未拣货且订单未揽收时，可以提交修改地址申请，成功与否以仓库确认结果为准。\n\n## 条款 r2\n已揽收订单不能直接修改地址，可申请承运人拦截；拦截成功前不得保证改址。\n\n## 条款 r3\n已发货的订单取消应按拦截或退货流程处理，不承诺即时退款。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "invoice",
+      "title": "电子发票",
+      "text": "# 电子发票\n## 条款 r1\n订单完成后可申请电子普通发票，需提供发票抬头、企业税号及接收邮箱。\n\n## 条款 r2\n个人抬头无需企业税号；开票金额以订单实际支付的可开票金额为准。\n\n## 条款 r3\n已开票后发生退款，应按退款金额处理红冲，不能重复开具全额发票。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "model",
+      "title": "型号与服务区分",
+      "text": "# 型号与服务区分\n## 条款 r1\n耳机 X-17 标准版保修十二个月；X-17 Pro 延长服务版保修二十四个月，仅适用于订单明确包含延长服务的商品。\n\n## 条款 r2\n型号相似不能推定享有 Pro 延长服务；先核验订单型号和服务条目。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    },
+    {
+      "document_id": "points",
+      "title": "积分权益",
+      "text": "# 积分权益\n## 条款 r1\n每实际消费一元获得一个积分，订单完成七日后入账。\n\n## 条款 r2\n退款会按退款金额扣回相应积分；积分不足时记录待抵扣，不承诺免扣。\n\n## 条款 r3\n一百积分可抵扣一元，积分兑换优惠与店铺券是否可叠加以活动明示为准；未说明时需核查。",
+      "metadata": {
+        "source": "CODEX_AUTHORED_SIMULATION",
+        "purpose": "DEMO_POLICY_NOT_BUSINESS_COMMITMENT",
+        "review_status": "DRAFT",
+        "pack_id": "rag-policy-v1",
+        "effective_date": "UNKNOWN",
+        "region": "SIMULATED_STORE_ONLY"
+      }
+    }
+  ],
+  "debug_cases": [
+    {
+      "case_id": "policy_01",
+      "query": "拆开包装但没用过，签收第五天能退吗？",
+      "relevant_document_ids": [
+        "returns"
+      ],
+      "expected_answer": "普通实物商品自签收次日起七日内，可申请无理由退货。\n商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。\n办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-01",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "CLARIFY",
+        "user_information": "NEEDS_CLARIFICATION",
+        "facts": [
+          {
+            "fact_id": "returns_r1",
+            "description": "普通实物商品自签收次日起七日内，可申请无理由退货。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "普通实物商品自签收次日起七日内，可申请无理由退货。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r2",
+            "description": "商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r5",
+            "description": "办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_02",
+      "query": "七天内的刻字定制杯，不想要了能无理由退吗？",
+      "relevant_document_ids": [
+        "returns"
+      ],
+      "expected_answer": "普通实物商品自签收次日起七日内，可申请无理由退货。\n按消费者要求定制的商品不适用无理由退货。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-02",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "returns_r1",
+            "description": "普通实物商品自签收次日起七日内，可申请无理由退货。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "普通实物商品自签收次日起七日内，可申请无理由退货。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r3",
+            "description": "按消费者要求定制的商品不适用无理由退货。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "按消费者要求定制的商品不适用无理由退货。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_03",
+      "query": "定制的杯子有质量问题，是不是完全不能售后？",
+      "relevant_document_ids": [
+        "returns"
+      ],
+      "expected_answer": "按消费者要求定制的商品不适用无理由退货。\n质量问题不受无理由退货例外限制，应转质量售后核验。\n办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-03",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "returns_r3",
+            "description": "按消费者要求定制的商品不适用无理由退货。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "按消费者要求定制的商品不适用无理由退货。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r4",
+            "description": "质量问题不受无理由退货例外限制，应转质量售后核验。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "质量问题不受无理由退货例外限制，应转质量售后核验。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r5",
+            "description": "办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "办理前核验订单号、签收时间、商品类型和当前状态；未知条件应先澄清，不得假定满足。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_04",
+      "query": "退货快递刚寄出去，钱是不是现在就到卡里了？",
+      "relevant_document_ids": [
+        "refund"
+      ],
+      "expected_answer": "退货入库并审核通过后，退款在五至七个工作日内原路退回。\n寄出退货不等于审核通过或退款完成；应先核验退货签收和审核状态。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-04",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "refund_r1",
+            "description": "退货入库并审核通过后，退款在五至七个工作日内原路退回。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "refund",
+                  "quote": "退货入库并审核通过后，退款在五至七个工作日内原路退回。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "refund_r2",
+            "description": "寄出退货不等于审核通过或退款完成；应先核验退货签收和审核状态。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "refund",
+                  "quote": "寄出退货不等于审核通过或退款完成；应先核验退货签收和审核状态。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_05",
+      "query": "退款审核通过第八个工作日还没到账，怎么办？",
+      "relevant_document_ids": [
+        "refund"
+      ],
+      "expected_answer": "退货入库并审核通过后，退款在五至七个工作日内原路退回。\n系统没有支付渠道到账记录时，不得承诺已经到账；超过七个工作日可转人工核查。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-05",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "HANDOFF",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "refund_r1",
+            "description": "退货入库并审核通过后，退款在五至七个工作日内原路退回。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "refund",
+                  "quote": "退货入库并审核通过后，退款在五至七个工作日内原路退回。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "refund_r3",
+            "description": "系统没有支付渠道到账记录时，不得承诺已经到账；超过七个工作日可转人工核查。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "refund",
+                  "quote": "系统没有支付渠道到账记录时，不得承诺已经到账；超过七个工作日可转人工核查。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_06",
+      "query": "买时用过券，只退一件能按原价退并把券全返吗？",
+      "relevant_document_ids": [
+        "coupon"
+      ],
+      "expected_answer": "店铺券仅用于订单抵扣，不折现；部分退货的退款金额以该商品分摊后的实付金额为准。\n部分退货不退回整张优惠券；不得同时承诺按原价退款与全额返券。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-06",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "coupon_r1",
+            "description": "店铺券仅用于订单抵扣，不折现；部分退货的退款金额以该商品分摊后的实付金额为准。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "coupon",
+                  "quote": "店铺券仅用于订单抵扣，不折现；部分退货的退款金额以该商品分摊后的实付金额为准。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "coupon_r3",
+            "description": "部分退货不退回整张优惠券；不得同时承诺按原价退款与全额返券。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "coupon",
+                  "quote": "部分退货不退回整张优惠券；不得同时承诺按原价退款与全额返券。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_07",
+      "query": "整单取消后已过期的优惠券能再发吗？",
+      "relevant_document_ids": [
+        "coupon"
+      ],
+      "expected_answer": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-07",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "coupon_r2",
+            "description": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "coupon",
+                  "quote": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_08",
+      "query": "普通无理由退货，寄回的钱谁出？",
+      "relevant_document_ids": [
+        "freight"
+      ],
+      "expected_answer": "普通无理由退货的寄回运费由消费者承担。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-08",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "freight_r1",
+            "description": "普通无理由退货的寄回运费由消费者承担。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "freight",
+                  "quote": "普通无理由退货的寄回运费由消费者承担。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_09",
+      "query": "确认是质量问题，有运费险就一定全额报销吗？",
+      "relevant_document_ids": [
+        "freight"
+      ],
+      "expected_answer": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。\n运费险是否赔付及赔付金额由保险审核决定，店铺不能保证全额赔付。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-09",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "freight_r2",
+            "description": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "freight",
+                  "quote": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "freight_r3",
+            "description": "运费险是否赔付及赔付金额由保险审核决定，店铺不能保证全额赔付。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "freight",
+                  "quote": "运费险是否赔付及赔付金额由保险审核决定，店铺不能保证全额赔付。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_10",
+      "query": "用了八个月自己摔坏了，可以免费修吗？",
+      "relevant_document_ids": [
+        "warranty"
+      ],
+      "expected_answer": "标准电子产品保修期为签收之日起十二个月，非人为质量故障可申请维修。\n进水、摔坏和未经授权拆修不在免费保修范围内，应先检测后报价。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-10",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "warranty_r1",
+            "description": "标准电子产品保修期为签收之日起十二个月，非人为质量故障可申请维修。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "warranty",
+                  "quote": "标准电子产品保修期为签收之日起十二个月，非人为质量故障可申请维修。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "warranty_r2",
+            "description": "进水、摔坏和未经授权拆修不在免费保修范围内，应先检测后报价。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "warranty",
+                  "quote": "进水、摔坏和未经授权拆修不在免费保修范围内，应先检测后报价。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_11",
+      "query": "这个在国外也能全球联保吗？",
+      "relevant_document_ids": [
+        "warranty"
+      ],
+      "expected_answer": "本模拟店铺资料未约定跨境或全球联保；应说明无法确认并转人工。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-11",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "HANDOFF",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "warranty_r4",
+            "description": "本模拟店铺资料未约定跨境或全球联保；应说明无法确认并转人工。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "warranty",
+                  "quote": "本模拟店铺资料未约定跨境或全球联保；应说明无法确认并转人工。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_12",
+      "query": "物流三天没动，是不是已经丢件，能直接补发吗？",
+      "relevant_document_ids": [
+        "logistics"
+      ],
+      "expected_answer": "揽收后连续四十八小时无物流更新，可以提供订单号和运单号申请核查。\n物流无更新不等于包裹已丢失；未经承运人确认不得承诺补发或赔付。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-12",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "logistics_r1",
+            "description": "揽收后连续四十八小时无物流更新，可以提供订单号和运单号申请核查。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "logistics",
+                  "quote": "揽收后连续四十八小时无物流更新，可以提供订单号和运单号申请核查。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "logistics_r2",
+            "description": "物流无更新不等于包裹已丢失；未经承运人确认不得承诺补发或赔付。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "logistics",
+                  "quote": "物流无更新不等于包裹已丢失；未经承运人确认不得承诺补发或赔付。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_13",
+      "query": "已经被快递揽收了，能保证改收货地址吗？",
+      "relevant_document_ids": [
+        "address"
+      ],
+      "expected_answer": "已揽收订单不能直接修改地址，可申请承运人拦截；拦截成功前不得保证改址。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-13",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "address_r2",
+            "description": "已揽收订单不能直接修改地址，可申请承运人拦截；拦截成功前不得保证改址。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "address",
+                  "quote": "已揽收订单不能直接修改地址，可申请承运人拦截；拦截成功前不得保证改址。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_14",
+      "query": "公司报销要电子发票，得准备什么？",
+      "relevant_document_ids": [
+        "invoice"
+      ],
+      "expected_answer": "订单完成后可申请电子普通发票，需提供发票抬头、企业税号及接收邮箱。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-14",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "invoice_r1",
+            "description": "订单完成后可申请电子普通发票，需提供发票抬头、企业税号及接收邮箱。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "invoice",
+                  "quote": "订单完成后可申请电子普通发票，需提供发票抬头、企业税号及接收邮箱。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_15",
+      "query": "我买的 X-17 普通版，是两年保修吗？",
+      "relevant_document_ids": [
+        "model"
+      ],
+      "expected_answer": "耳机 X-17 标准版保修十二个月；X-17 Pro 延长服务版保修二十四个月，仅适用于订单明确包含延长服务的商品。\n型号相似不能推定享有 Pro 延长服务；先核验订单型号和服务条目。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-15",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "model_r1",
+            "description": "耳机 X-17 标准版保修十二个月；X-17 Pro 延长服务版保修二十四个月，仅适用于订单明确包含延长服务的商品。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "model",
+                  "quote": "耳机 X-17 标准版保修十二个月；X-17 Pro 延长服务版保修二十四个月，仅适用于订单明确包含延长服务的商品。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "model_r2",
+            "description": "型号相似不能推定享有 Pro 延长服务；先核验订单型号和服务条目。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "model",
+                  "quote": "型号相似不能推定享有 Pro 延长服务；先核验订单型号和服务条目。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_16",
+      "query": "订单完成三天，积分怎么还没来？",
+      "relevant_document_ids": [
+        "points"
+      ],
+      "expected_answer": "每实际消费一元获得一个积分，订单完成七日后入账。",
+      "source": "demo",
+      "partition": "DEBUG",
+      "group_id": "policy-family-16",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "points_r1",
+            "description": "每实际消费一元获得一个积分，订单完成七日后入账。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "points",
+                  "quote": "每实际消费一元获得一个积分，订单完成七日后入账。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    }
+  ],
+  "holdout_count": 8,
+  "coverage_matrix": [
+    {
+      "document_id": "returns",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3",
+        "r4",
+        "r5"
+      ],
+      "debug_families": [
+        "policy-family-01",
+        "policy-family-02",
+        "policy-family-03"
+      ]
+    },
+    {
+      "document_id": "refund",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3",
+        "r4"
+      ],
+      "debug_families": [
+        "policy-family-04",
+        "policy-family-05"
+      ]
+    },
+    {
+      "document_id": "coupon",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-06",
+        "policy-family-07"
+      ]
+    },
+    {
+      "document_id": "freight",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-08",
+        "policy-family-09"
+      ]
+    },
+    {
+      "document_id": "warranty",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3",
+        "r4"
+      ],
+      "debug_families": [
+        "policy-family-10",
+        "policy-family-11"
+      ]
+    },
+    {
+      "document_id": "logistics",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-12"
+      ]
+    },
+    {
+      "document_id": "address",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-13"
+      ]
+    },
+    {
+      "document_id": "invoice",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-14"
+      ]
+    },
+    {
+      "document_id": "model",
+      "rule_ids": [
+        "r1",
+        "r2"
+      ],
+      "debug_families": [
+        "policy-family-15"
+      ]
+    },
+    {
+      "document_id": "points",
+      "rule_ids": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "debug_families": [
+        "policy-family-16"
+      ]
+    }
+  ],
+  "fault_variants": [
+    {
+      "variant": "missing-return-exception",
+      "origin": "TEACHING_INJECTED",
+      "document_id": "returns",
+      "remove_exact": "按消费者要求定制的商品不适用无理由退货。",
+      "intended_question_family": "policy-family-02"
+    },
+    {
+      "variant": "separated-condition",
+      "origin": "TEACHING_INJECTED",
+      "description": "将主规则与定制例外切为不同片段，仅供上下文补全练习；无真实效果声称。"
+    }
+  ]
+}

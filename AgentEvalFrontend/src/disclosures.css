@@ -1,0 +1,50 @@
+/* A disclosure is one bordered panel: a connected header and an inset body. */
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details {
+  box-sizing:border-box;
+  padding:0;
+  border:1px solid var(--color-line-strong);
+  border-radius:var(--radius-panel);
+  background:var(--color-surface);
+  margin-block:12px;
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details[open] {
+  padding:0 16px 16px;
+  border-color:#a4b29a;
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary {
+  position:relative;
+  display:block;
+  min-height:48px;
+  padding:12px 84px 12px 16px;
+  margin:0;
+  border:0;
+  border-radius:7px;
+  background:var(--color-canvas);
+  color:var(--color-text);
+  font-size:14px;
+  font-weight:600;
+  line-height:1.7;
+  list-style:none;
+  overflow-wrap:anywhere;
+  cursor:pointer;
+  transition:background var(--duration-fast);
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary::-webkit-details-marker {display:none}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary::marker {content:''}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary::after {
+  content:'展开';position:absolute;inset-inline-end:34px;top:50%;transform:translateY(-50%);color:var(--color-primary);font-size:13px;font-weight:600;line-height:1.4;white-space:nowrap;
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary::before {
+  content:'';position:absolute;inset-inline-end:17px;top:calc(50% - 5px);width:7px;height:7px;border-inline-end:1.5px solid var(--color-primary);border-block-end:1.5px solid var(--color-primary);transform:rotate(45deg);
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details[open] > summary {
+  margin:0 -16px 14px;
+  border-bottom:1px solid #cbd5c1;
+  border-radius:7px 7px 0 0;
+  background:#edf1e8;
+}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details[open] > summary::after {content:'收起'}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details[open] > summary::before {top:calc(50% - 1px);transform:rotate(225deg)}
+@media(hover:hover){:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary:hover {background:#e8ede1}}
+:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary:focus-visible {outline:2px solid var(--color-focus);outline-offset:-3px}
+@media(prefers-reduced-motion:reduce){:is(.workspace-shell.visual-workspace, .workspace-drawer .workspace-drawer-content) details > summary {transition:none}}

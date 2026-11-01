@@ -108,5 +108,5 @@ def test_evidence_explanations_keep_unknowns_and_never_change_outcome():
     assert unknown[0]['code']=='INSUFFICIENT_REASON_UNRECORDED'
     gap=decision_reasons(None,{'missing_items':['REFERENCE_COMPLETENESS_UNCONFIRMED'],
         'item_checks':[{'status':'EVIDENCE_INSUFFICIENT','reason':'REFERENCE_COMPLETENESS_UNCONFIRMED'}]},'EVIDENCE_INSUFFICIENT')
-    assert len(gap)==1 and '尚未确认' in gap[0]['message']
+    assert len(gap)==1 and '还未核对' in gap[0]['message']
     assert '没有' not in gap[0]['message']  # Unconfirmed completeness is not absent knowledge.

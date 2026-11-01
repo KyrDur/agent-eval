@@ -1,5 +1,5 @@
 import {questionStatus,answerExplanation} from './question-navigation.js'
-export const resultTones={通过:'pass',不通过:'fail',执行失败:'error',证据不足:'unknown',未检查:'unknown',本题不适用:'neutral',尚未执行:'unknown',已找到:'pass',未找到:'fail'}
+export const resultTones={通过:'pass',不通过:'fail',执行失败:'error',评分失败:'error',证据不足:'unknown',未检查:'unknown',本题不适用:'neutral',尚未执行:'unknown',已找到:'pass',未找到:'fail'}
 // These are excerpts of saved records, never newly generated diagnoses.
 export function excerpt(text,max=90){const value=String(text||'').replace(/\*\*/g,'').replace(/`/g,'').replace(/\s+/g,' ').trim();return value.length>max?value.slice(0,max)+'…':value}
 export function visualRows(view){
@@ -21,8 +21,11 @@ export function visualSummary(view){
  const decided=verified?(flow?.coverage?.numerator??counts.pass+counts.fail):counts.pass+counts.fail
  const rate=verified?flow?.partial_pass_rate:null
  const passed=rate?.numerator??counts.pass,binary=rate?.denominator??decided
- let title=verified?(counts.fail?`${counts.fail} 题没答好，先看这里`:counts.error?`${counts.error} 题未完成，先查运行`:counts.unknown?'有些题还不能判断':rows.length?'这批题的判定已保存':'等待评测结果'):'资料找得怎么样？'
- return {rows,counts,total:denominator,decided,passed,binary,title,verified,historical:verified&&!flow}
+ const running=view?.run?.status==='RUNNING'
+ const scoringErrors=rows.filter(c=>c.status==='评分失败').length
+ const errorLabel=scoringErrors===counts.error&&scoringErrors?'评分失败':scoringErrors?'运行异常':'执行失败'
+ let title=running?'正在评测中':verified?(counts.fail?`${counts.fail} 题没答好，先看这里`:counts.error?`${counts.error} 题${errorLabel}，先查${errorLabel==='评分失败'?'评分':'运行'}`:counts.unknown?`评测完成，${counts.unknown} 道题需核对`:rows.length?'评测已完成':'等待评测结果'):'资料找得怎么样？'
+ return {rows,counts,total:denominator,decided,passed,binary,title,verified,running,scoringErrors,errorLabel,historical:verified&&!flow}
 }
 export function caseExcerpt(view,row){
  const answer=view?.effective_answer_results?.find(a=>a.case_id===row?.case_id)

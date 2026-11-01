@@ -134,7 +134,7 @@ class Renderer:
         return clean(chosen),['interpretation']
     def case_study(self):
         d=self.discovery();result=self.result();action=self.action()
-        control='固定原题、标签、模型、切分与检索配置，只更换知识版本及其索引；以实际差异和可比较性检查验证实验条件。' if not self.legacy and self.val('change',{}).get('change_type')=='KNOWLEDGE_UPDATE' else '固定题目、标签和索引；除已记录的修改外保持其他配置一致，以实际差异及可比较性检查验证实验条件。'
+        control='固定原题、标签、模型、切分与检索配置，只更换知识版本及其索引；以实际差异和可比较性检查验证实验条件。' if not self.legacy and self.val('change',{}).get('change_type')=='KNOWLEDGE_UPDATE' else '固定题目与标签，只允许已声明因素及其派生索引变化，以实际差异和可比较性检查验证实验条件。'
         reflection_paragraphs=[]
         root=self.f['root_cause'];alt=self.f['alternatives'];interpret=self.f['interpretation']
         roottext='根因尚未确认，当前只记录排序现象；原因仍是待验证假设，需要另做对照检验。' if root.evidence_state=='MISSING' else '待验证根因假设：'+clean(root.value)

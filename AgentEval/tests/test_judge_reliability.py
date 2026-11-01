@@ -92,8 +92,73 @@ def test_missing_dimensions_and_na_rubric_and_bad_alias(environment):
     raw=deepcopy(EXAMPLE);raw['dimensions']['faithfulness']['score']='NA'
     with pytest.raises(JudgeValidationError) as caught:normalize_alias_judgment(raw,aliases,sample,rubric,True)
     assert caught.value.issues[0]['code']=='NA_NOT_ALLOWED'
+    assert caught.value.issues[0]['retryable'] is True
     raw=deepcopy(EXAMPLE);raw['dimensions']['relevance']['answer_fragment_ids']=['A999']
     with pytest.raises(ValueError,match='FRAGMENT_ID_INVALID'):normalize_alias_judgment(raw,aliases,sample,rubric,True)
+
+def test_conditions_na_gets_one_feedback_recovery_with_matching_prompt_contract(environment):
+    manager,run,session=environment
+    source=manager.store.path('retrieval_runs',run.run_id).read_bytes()
+    bad=deepcopy(EXAMPLE);bad['dimensions']['conditions']['score']='NA'
+    job=manager.create(run.run_id,['a'],session.provider_session_id,'conditions-na')
+    execute(manager,job,[bad,EXAMPLE])
+    assert len(Scripted.calls)==2
+    for call in Scripted.calls:
+        payload=json.loads(call['messages'][0]['content'])
+        assert payload['scoring_requirements']['allowed_scores']['conditions']==[0,1,2,'INSUFFICIENT']
+        assert payload['scoring_requirements']['allowed_scores']['actionability']==[0,1,2,'INSUFFICIENT','NA']
+        assert 'conditions.score 仅允许 [0, 1, 2, "INSUFFICIENT"]；禁止 NA。' in call['system']
+    feedback=json.loads(Scripted.calls[1]['messages'][0]['content'])['previous_validation_issues'][0]
+    assert feedback['field_path']=='dimensions.conditions.score'
+    assert feedback['actual']=='NA' and feedback['expected']==[0,1,2,'INSUFFICIENT']
+    report=manager.view(job.job_id)['report']
+    assert report.adoption_manifest[0]['evaluation_state']=='PASS'
+    assert report.adoption_manifest[0]['attempt_count']==2
+    assert manager.store.path('retrieval_runs',run.run_id).read_bytes()==source
+
+def test_repeated_illegal_na_remains_a_scoring_failure_without_coercion(environment):
+    manager,run,session=environment
+    bad=deepcopy(EXAMPLE);bad['dimensions']['conditions']['score']='NA'
+    job=manager.create(run.run_id,['a'],session.provider_session_id,'repeat-na')
+    execute(manager,job,[bad,bad])
+    assert len(Scripted.calls)==2
+    row=manager.view(job.job_id)['report'].adoption_manifest[0]
+    assert row['evaluation_state']=='EXECUTION_FAILED' and row['adopted_attempt_id'] is None
+    assert json.loads(row['result']['raw_output'])['dimensions']['conditions']['score']=='NA'
+    assert row['result']['judgment'] is None
+
+def test_insufficient_is_valid_and_never_retried_until_pass(environment):
+    manager,run,session=environment
+    raw=deepcopy(EXAMPLE);raw['dimensions']['conditions']['score']='INSUFFICIENT'
+    raw['insufficient_items']=['无法核实条件适用性']
+    job=manager.create(run.run_id,['a'],session.provider_session_id,'insufficient')
+    execute(manager,job,[raw])
+    assert len(Scripted.calls)==1
+    row=manager.view(job.job_id)['report'].adoption_manifest[0]
+    assert row['result']['status']=='SUCCESS'
+    assert row['evaluation_state']=='EVIDENCE_INSUFFICIENT'
+    assert row['result']['judgment']['dimensions']['conditions']['score']=='INSUFFICIENT'
+
+def test_missing_knowledge_grades_honest_handoff_without_inventing_policy(environment):
+    manager,run,_=environment
+    _,_,original,_,_=load_answer(manager.store,run.run_id,'a')
+    sample=original.model_copy(update={'question':'支持花呗分期吗？手续费怎么算？',
+        'answer':'资料没有分期和手续费信息，无法确认，请咨询人工客服。',
+        'expected_facts':['无法确认分期及费用；不编造，转人工。'],
+        'reference_policy':[],'reference_complete':False,
+        'provenance':{'scenario_rules':{'template_id':'MISSING_KNOWLEDGE','expected_behavior':'HANDOFF'}}})
+    raw=deepcopy(EXAMPLE)
+    for name,value in raw['dimensions'].items():
+        value.update(score=2,answer_fragment_ids=['A1'],evidence_fragment_ids=['R1'] if name=='faithfulness' else [])
+    raw.update(task_resolved='NO',task_failure_reasons=['未解决分期业务问题'],reason='已诚实说明局限并指引人工。')
+    rubric=RubricVersion.model_validate(run.controls['scoring_profile']['rubric'])
+    _,aliases=alias_sample_input(sample)
+    judgment,_=normalize_alias_judgment(raw,aliases,sample,rubric,True)
+    assert judgment.verdict=='PASS' and judgment.task_resolved=='NO'
+    raw['dimensions']['faithfulness']['score']=0
+    raw['critical_errors']=['UNSUPPORTED_PROMISE']
+    judgment,_=normalize_alias_judgment(raw,aliases,sample,rubric,True)
+    assert judgment.verdict=='FAIL' and judgment.critical_errors==['UNSUPPORTED_PROMISE']
 
 def test_null_recovery_immutable_first_valid_subset_and_csv_and_chat(environment):
     manager,run,session=environment;path=manager.store.path('retrieval_runs',run.run_id);before=path.read_bytes()

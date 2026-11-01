@@ -8,3 +8,15 @@ test('retrieval-only presentation does not claim answer quality',()=>{const v=ma
 test('answer excerpt is derived from the saved answer without replacing the original',()=>{const v=makeView();const text='原始**回答**。\n第二句。';v.effective_answer_results=[{case_id:'a',execution_status:'SUCCESS',original_reason:'原始判定理由',turn_evidence:[{response:text}]}];const x=caseExcerpt(v,v.run.case_results[0]);assert.equal(x.answerExcerpt,'原始回答。 第二句。');assert.equal(x.answerText,text);assert.equal(x.reason,'原始判定理由')})
 test('failed scoring presents a technical failure explanation instead of a content verdict',()=>{const v=makeView();v.effective_answer_results=[{case_id:'c',judge_status:'FAILED',original_reason:'不得作为有效判定展示',turn_evidence:[]}];assert.match(caseExcerpt(v,v.run.case_results[2]).reason,/评分未完成/);assert.doesNotMatch(caseExcerpt(v,v.run.case_results[2]).reason,/不得作为有效判定展示/)})
 test('old records keep the missing scope notice and do not invent a pass rate',()=>{const v=makeView();delete v.trusted_result;const s=visualSummary(v);assert.equal(s.historical,true);assert.equal(s.passed,0);assert.equal(s.decided,0);assert.equal(excerpt('一二三四五',3),'一二三…')})
+test('an active run says evaluating while preserving the actual verdict counts',()=>{const v=makeView();v.run.status='RUNNING';const s=visualSummary(v);assert.equal(s.title,'正在评测中');assert.equal(s.running,true);assert.equal(s.counts.fail,1);assert.equal(s.counts.unknown,1);assert.equal(s.decided,2)})
+test('a finished run with insufficient evidence never remains labelled evaluating',()=>{const v=makeView();v.run.status='COMPLETE';v.trusted_result.cases.forEach(c=>c.evaluation_state='EVIDENCE_INSUFFICIENT');v.trusted_result.sample_flow.coverage.numerator=0;v.trusted_result.sample_flow.partial_pass_rate={numerator:0,denominator:0};const s=visualSummary(v);assert.equal(s.running,false);assert.match(s.title,/评测完成.*需核对/);assert.doesNotMatch(s.title,/正在评测/);assert.equal(s.binary,0)})
+test('scoring failures have their own label and never enter answer pass or fail counts',()=>{
+ const v=makeView();v.effective_answer_results=[{case_id:'c',execution_status:'SUCCESS',judge_status:'FAILED'}]
+ let s=visualSummary(v)
+ assert.equal(s.scoringErrors,1);assert.equal(s.errorLabel,'评分失败');assert.equal(s.rows[2].status,'评分失败')
+ assert.deepEqual(s.counts,{pass:1,fail:1,error:1,unknown:1,neutral:0})
+ v.trusted_result.cases.forEach(c=>c.evaluation_state='EXECUTION_FAILED')
+ s=visualSummary(v);assert.equal(s.errorLabel,'运行异常')
+ v.run.execution_order=['c'];v.run.case_results=v.run.case_results.filter(r=>r.case_id==='c')
+ s=visualSummary(v);assert.match(s.title,/评分失败，先查评分/)
+})

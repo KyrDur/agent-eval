@@ -18,6 +18,18 @@ function addAfter(o){
  o.experiment.comparison={comparison_id:'comparison',baseline_run_id:'base',retest_run_id:'after',comparable:true,comparison_completeness:'PARTIAL',single_recorded_change:true,attributable:false,case_pairs:[{case_id:'shipping',answer_transition:'FAIL→PASS'}]}
 }
 
+test('project material includes the single-case trial as a separate step and preserves the original one-click prompt',()=>{
+ const options=fixture(),single=structuredClone(options.experiment.baseline)
+ single.run.run_id='single';single.run.execution_order=['shipping'];single.run.case_results=single.run.case_results.slice(0,1);single.effective_answer_results=single.effective_answer_results.slice(0,1)
+ options.experiment.trialResult={flow:{inputs:{baseline_run_id:'base'}},view:single}
+ const context=careerProjectContext(options)
+ assert.equal(context.单题试跑.记录.已保存题目数,1)
+ assert.equal(context.原始初测.已保存题目数,3)
+ assert.ok(context.已保存的操作.some(s=>s.操作==='先快速试当前题'))
+ assert.match(careerProjectPrompt(options),/牛客/)
+ assert.match(context.单题试跑.范围,/不能据此判断整体改善/)
+})
+
 test('project prompt is ready from a saved initial run without creating career artifacts',()=>{
  assert.equal(careerProjectContext(),null);assert.equal(careerProjectPrompt(), '')
  const o=fixture(),before=structuredClone(o),c=careerProjectContext(o)

@@ -7,7 +7,7 @@ from typing import Literal
 import re
 from .api import service, execute, Input
 from .providers import ProviderFailure
-from .retrieval_models import DocumentInput, ChunkConfig, RetrievalCase, RetrievalConfig
+from .retrieval_models import DocumentInput, ChunkConfig, RetrievalCase, RetrievalConfig, VerificationPlan
 from .retrieval_service import RetrievalService
 from .retrieval_embeddings import EmbeddingFailure
 
@@ -53,7 +53,7 @@ class KnowledgeInput(Input):
 class IndexInput(Input):
     version: int = Field(ge=1)
     chunk_config: ChunkConfig | None = None
-    embedding_model: Literal['all-MiniLM-L6-v2','sha256-lexical-bigram-v1'] = 'all-MiniLM-L6-v2'
+    embedding_model: Literal['all-MiniLM-L6-v2','sha256-lexical-bigram-v1','BAAI/bge-small-zh-v1.5'] = 'all-MiniLM-L6-v2'
 
 class EvalSetInput(Input):
     index_id: str
@@ -75,8 +75,9 @@ class RunInput(Input):
     scoring_profile_id: str | None = Field(default=None,min_length=1,max_length=128)
 
 class ChangeInput(Input):
+    verification_plan: VerificationPlan | None = None
     baseline_run_id: str
-    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE','ANSWER_PROMPT_CHANGE']
+    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE','ANSWER_PROMPT_CHANGE','CHUNKING_CHANGE','EMBEDDING_CHANGE','RETRIEVAL_MODE_CHANGE','CONTEXT_STRATEGY_CHANGE','CANDIDATE_POOL_CHANGE']
     target_index_id: str | None = None
     after_config: RetrievalConfig
     reason: str = Field(min_length=1,max_length=3000)
@@ -146,6 +147,19 @@ async def submit_run(body:RunTaskInput,request:Request):
     registry=getattr(request.app.state,'workspaces',None)
     capacity=registry.expensive if registry else request.app.state.retrieval_slots
     return await acquire(background(retrieval()).submit(body.model_dump(),capacity))
+
+@router.get('/retrieval-run-tasks/{request_id}')
+def run_receipt(request_id:str):
+    """Read the exact workspace-local receipt, never submit or resume inference."""
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',request_id):
+        raise HTTPException(422,'IDEMPOTENCY_REQUEST_INVALID')
+    from .retrieval_background import background
+    controller=background(retrieval())
+    run=execute(controller.saved,request_id)
+    if run:return run
+    if request_id in controller.pending:
+        return {'request_id':request_id,'status':'SUBMITTING'}
+    raise HTTPException(404,'RUN_RECEIPT_NOT_FOUND')
 
 @router.get('/retrieval-runs/{identifier}')
 def get_run(identifier:str): return execute(retrieval().view,identifier)
@@ -303,3 +317,64 @@ def suggest_groups(body:GroupInput):
     rows=[c.model_copy(update={'group_id':cases[find(i)].group_id or 'family_'+str(find(i)+1)}).model_dump(mode='json') for i,c in enumerate(cases)]
     conflicts=sorted({r['group_id'] for r in rows if len({v['partition'] for v in rows if v['group_id']==r['group_id']})>1})
     return {'cases':rows,'conflicts':conflicts,'requires_human_confirmation':True}
+
+
+class FlowIndexInput(Input):
+    dataset_id: str
+    version: int = Field(ge=1)
+    chunk_config: ChunkConfig
+    embedding_model: Literal['all-MiniLM-L6-v2','sha256-lexical-bigram-v1','BAAI/bge-small-zh-v1.5']
+
+class FlowInput(ChangeInput):
+    request_id: str = Field(pattern=r'^[A-Za-z0-9_-]{1,100}$')
+    provider_session_id: str
+    prepare_index: FlowIndexInput | None = None
+    execution_mode: Literal['FULL','TRIAL'] = 'FULL'
+    trial_flow_id: str | None = Field(default=None,pattern=r'^[A-Za-z0-9_-]{1,100}$')
+
+
+def flow_capacity(request):
+    registry=getattr(request.app.state,'workspaces',None)
+    return registry.expensive if registry else request.app.state.retrieval_slots
+
+@router.post('/retest-flows',status_code=202)
+async def start_flow(body:FlowInput,request:Request):
+    from .retest_flow import submit
+    values=body.model_dump();identifier=values.pop('request_id')
+    return await acquire(submit(retrieval(),identifier,values,flow_capacity(request)))
+
+@router.get('/retest-flows/{identifier}')
+def get_flow(identifier:str):
+    from .retest_flow import read
+    return execute(read,retrieval(),identifier)
+
+@router.get('/retrieval-trial-runs/{identifier}')
+def get_trial_run(identifier:str):
+    return execute(retrieval().view,identifier,_group='retrieval_trial_runs')
+
+@router.post('/retest-flows/{identifier}/resume',status_code=202)
+async def resume_flow(identifier:str,request:Request):
+    from .retest_flow import resume
+    return await acquire(resume(retrieval(),identifier,flow_capacity(request)))
+
+@router.post('/retest-flows/{identifier}/cancel')
+async def cancel_flow(identifier:str):
+    from .retest_flow import cancel
+    return await acquire(cancel(retrieval(),identifier))
+
+
+class ExternalSuggestionInput(Input):
+    run_id: str
+    stage: Literal['case','plan','comparison','resume','interview','retrospective']
+    text: str = Field(min_length=1,max_length=8000)
+
+@router.post('/external-suggestions')
+def save_external_suggestion(body:ExternalSuggestionInput):
+    from .external_suggestions import ExternalSuggestion
+    rag=retrieval();execute(rag.store.get,'retrieval_runs',body.run_id)
+    return execute(rag.store.put,'external_suggestions',ExternalSuggestion(**body.model_dump()))
+
+@router.get('/external-suggestions')
+def external_suggestions(run_id:str):
+    rag=retrieval();execute(rag.store.get,'retrieval_runs',run_id)
+    return [s for s in rag.store.list('external_suggestions') if s.run_id==run_id]

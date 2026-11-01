@@ -16,7 +16,7 @@ async function learningForm(page){
 test('No-Key replay, graded hints, decline, unseen transfer and pending human review',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message))
  await page.goto('/');await page.getByRole('button',{name:'先看一个完整案例 →',exact:true}).click()
- await expect(page.getByRole('heading',{name:'先看五种改法怎么选',exact:true})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'先看 10 种改法怎么选',exact:true})).toBeVisible()
  await page.getByText('练习：核对证据与评分',{exact:true}).click()
  await page.getByText('换一道题，或直接看解析',{exact:true}).click()
  await page.getByRole('combobox',{name:'选择题目',exact:true}).selectOption('p07')

@@ -3,6 +3,7 @@ export const lexicalModel = 'sha256-lexical-bigram-v1'
 export function embeddingLabel(index) {
   const snapshot = index?.embedding_snapshot
   if (!snapshot) return '尚未建立索引'
+  if(snapshot.model==='BAAI/bge-small-zh-v1.5')return '中文语义检索 · BGE-small-zh · 512 维'
   return snapshot.model === semanticModel
     ? '本地语义检索 · all-MiniLM-L6-v2 · 384 维'
     : `词汇检索 · ${snapshot.model} · ${snapshot.dimension} 维`

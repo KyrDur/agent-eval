@@ -20,6 +20,7 @@ from .assist_api import router as assist_router
 from .calibration_api import router as calibration_router
 from .calibration_service import CalibrationService
 from .retrieval_background import close_background
+from .rag_lab_api import router as rag_lab_router
 from .learning_api import router as learning_router
 from .workspaces import WorkspaceMiddleware, WorkspaceRegistry, request_service
 from .analytics import AnalyticsStore, AnalyticsMiddleware
@@ -88,6 +89,7 @@ app.include_router(learning_router)
 app.include_router(career_router)
 app.include_router(assist_router)
 app.include_router(practice_router)
+app.include_router(rag_lab_router)
 app.include_router(retrieval_router)
 app.include_router(router)  # Historical generic GET route must follow explicit Retrieval routes.
 install_validation_handler(app)

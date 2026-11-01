@@ -1,4 +1,5 @@
 <script setup>
+import MarkdownContent from './MarkdownContent.vue'
 import {computed,inject,ref,watch} from 'vue'
 import {api} from '../api.js'
 import RunDiagnostics from './RunDiagnostics.vue'
@@ -38,7 +39,7 @@ async function execute(){await work.action('运行两版保留验证并解封',a
     <p class="note warning">已解封；单轮差异不证明因果。Judge 初始未校准时，仍需人工核对评分。</p>
     <article v-for="pair in validation.report.case_pairs" :key="pair.case_id" class="holdout-case">
      <h3>{{pair.query}}</h3><p>检索：{{{RETRIEVAL_IMPROVED:'改善',RETRIEVAL_REGRESSED:'退化',RETRIEVAL_UNCHANGED:'未变化',NOT_COMPARABLE:'无法比较'}[pair.transition]}} · 回答：{{pair.answer_transition}}</p>
-     <div class="two-column"><div v-for="side in ['baseline','retest']" :key="side"><h4>{{side==='baseline'?'修改前':'修改后'}}</h4><p>{{pair[side+'_answer']?.turn_evidence?.[0]?.response || '未形成回答'}}</p><RunDiagnostics :retrieval="pair[side]" :answer="pair[side+'_answer']" :verify-answers="!!pair[side+'_answer']" /><ScoringEvidence :result="pair[side+'_answer']" /></div></div>
+     <div class="two-column"><div v-for="side in ['baseline','retest']" :key="side"><h4>{{side==='baseline'?'修改前':'修改后'}}</h4><MarkdownContent :source="pair[side+'_answer']?.turn_evidence?.[0]?.response || '未形成回答'" /><RunDiagnostics :retrieval="pair[side]" :answer="pair[side+'_answer']" :verify-answers="!!pair[side+'_answer']" /><ScoringEvidence :result="pair[side+'_answer']" :retrieval="pair[side]" :documents="rag.state[side]?.run.controls.knowledge_snapshot?.documents" /></div></div>
     </article>
    </template>
   </template>

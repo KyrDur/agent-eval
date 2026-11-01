@@ -34,3 +34,8 @@ export function identifyPreset(config) {
   return modelPresets.find(p => p.id !== 'custom' && p.provider === config.provider &&
     p.base_url === config.base_url?.replace(/\/$/, ''))?.id || 'custom'
 }
+
+// Identify explicit acceptance models only; ordinary localhost providers are valid.
+export function isAcceptanceConnection(config){
+ return /^(?:phase\d+-|acceptance-|test-fixture-|retrieval-only-local-readiness-fixture$)/.test(config?.model||'')
+}

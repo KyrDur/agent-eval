@@ -45,7 +45,7 @@ watch(()=>state.step,step=>{
   if(step===6&&variant.value==='J1'){variant.value='J2';protocolName.value='增加证据核对 · 修改与复测';parentId.value=protocols.value.find(p=>p.variant==='J1')?.protocol_id||'';hypothesis.value='增加逐项证据核验，观察关键错误漏检与错误拒绝是否变化。'}
 })
 onMounted(()=>parse(async()=>{
-  await cal.refresh();sourceHistory.value=await api.get('/retrieval-history')
+  await cal.restore();sourceHistory.value=await api.get('/retrieval-history')
   if(!definition.value)definition.value=await api.get('/calibration/template')
 }))
 async function loadSource(){await cal.act('读取历史冻结回答',async()=>{sourceView.value=await api.get('/retrieval-runs/'+sourceRunId.value)})}
@@ -79,9 +79,8 @@ async function exportReport(id){await cal.act('导出冻结报告',async()=>{
 </script>
 <template>
   <div class="calibration-page">
-    <p class="note">进阶入口：平台维护者负责基础练习标准与可信度。普通学习者无需先建立自己的 Judge 研究，可先完成证据判断练习。</p>
-    <div class="page-heading"><div><div class="eyebrow">EVALUATOR CALIBRATION</div><h1>评测校准</h1><p>固定回答，建立独立参照，检查 AI 评分是否合理，并记录问题怎样被修复。</p></div><span class="pill">研究状态以真实参照和验证记录为准</span></div>
-    <details class="panel"><summary>第一次用：评分标准和评测校准是做什么的？</summary><p>评分标准说明什么算好回答，例如事实有依据、没有漏掉必要条件。评测校准检查评分模型能否按这套标准判断：先由人独立判断固定回答，再与模型评分对照，找出误判并修订。</p><p>这里重评已有回答。修改客服、让它重新回答并检查效果，请使用主实验。看过模型判定之后再做人评属于复核，不能当作独立盲评。</p></details>
+    <div class="page-heading"><div><div class="eyebrow">进阶工具 · 需要时再用</div><h1>人工与 AI 对照</h1><p>先由人独立判断一组固定回答，再与 AI 打分对照，找出评分分歧。</p></div></div>
+    <p class="note">人先判断 → AI 打分 → 核对分歧。看过机评分后再改判属于复核；复制 AI 建议也不能代替独立人工标注。</p>
     <section class="panel cal-overview"><div class="two-column"><label>样本集<select :value="state.dataset?.dataset_id||''" :disabled="!!work.state.busy" @change="cal.act('打开冻结样本集',()=>cal.openDataset($event.target.value))"><option value="" disabled>选择或建立样本集</option><option v-for="d in state.history.datasets" :key="d.dataset_id" :value="d.dataset_id">{{d.name}} · {{d.calibration_count}} 校准 / {{d.holdout_count}} 保留</option></select></label><label>评分细则版本<select :value="state.rubric?.rubric_id||''" :disabled="!!work.state.busy" @change="state.rubric=state.history.rubrics.find(r=>r.rubric_id===$event.target.value);state.blind=null;state.run=null;state.comparison=null;cal.persist()"><option value="" disabled>请保存初始标准</option><option v-for="r in state.history.rubrics" :key="r.rubric_id" :value="r.rubric_id">{{r.name}} · {{r.rubric_id.slice(0,8)}}</option></select></label></div><p v-if="state.dataset" class="muted">{{calibrationCount}} 份校准回答 · {{holdoutCount}} 份保留回答 · 工作流隔离。开发者可访问本地内容，制作和标注曝光须如实记录。</p></section>
     <div class="cal-purpose-grid"><article><strong>先确认标准</strong><p>人先定义什么算好回答，再按同一细则核对 AI 评分。</p></article><article><strong>分别看两件事</strong><p>回答有没有编造，和用户问题是否解决，分别记录。</p></article><article><strong>最后验证修复</strong><p>把问题、修改和新一轮结果关联，保留未改善的结论。</p></article></div>
     <nav class="cal-steps" aria-label="校准步骤"><button v-for="(label,index) in steps" :key="label" :class="{active:state.step===index+1}" :disabled="!!work.state.busy" @click="cal.go(index+1)"><span>{{index+1}}</span>{{label}}</button></nav>

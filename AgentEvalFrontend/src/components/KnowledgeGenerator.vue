@@ -8,12 +8,12 @@ const emit=defineEmits(['preview']),work=inject('workspace'),ai=inject('ai'),s=a
 const sid=computed(()=>ai.modelSession||work.state.session?.provider_session_id)
 const ready=computed(()=>!!sid.value && s.scenario.trim().length>=5)
 function preview(category=null){emit('preview',{name:s.name,documents:s.documents,category});s.confirmed=false}
-async function generate(category=null){await work.action(category?'重新生成一类知识':'AI 生成并填写知识资料',async()=>{
+async function generate(category=null){const draft=await work.action(category?'重新生成一类知识':'AI 生成并填写知识资料',async()=>{
  const draft=await api.post('/ai/knowledge',{request_id:crypto.randomUUID(),provider_session_id:sid.value,scenario:s.scenario,facts:s.facts},{regenerate:!!category})
  if(category){const d=draft.content.documents.find(d=>d.metadata.category===category),at=s.documents.findIndex(d=>d.metadata.category===category),old=s.documents[at].document_id;s.documents[at]=copy(d);s.selected=s.selected.map(id=>id===old?d.document_id:id)}
  else {s.draft=draft;s.documents=copy(draft.content.documents);s.name=draft.content.name;s.selected=s.documents.map(d=>d.document_id)}
- preview(category)
-})}
+ return draft
+});if(draft)preview(category)}
 defineExpose({generate,ready})
 </script>
 <template>

@@ -1,5 +1,7 @@
 // A separate, authored demonstration. It contains no practice/transfer answers
 // and never creates attempts, learner judgments, model calls or score records.
+import {newOptimizationExamples} from './learning-new-methods.js'
+import {changeOptions} from './retrieval-change-options.js'
 export const shippingExample = {
   policy: '订单实付满 199 元，且配送地址在中国大陆时包邮。未满 199 元收取运费；没有提供地址时，先询问收货地区。',
   question: '实付 129 元，寄到上海，能包邮吗？',
@@ -141,7 +143,7 @@ export const optimizationExamples = [
   reason:'定制限制能被找到并正确使用，普通退货题没有被误套规则；其他缺失知识仍待补齐。',
   limitations:'还没检查更多定制商品、质量问题和旧规则冲突，需要继续验证。',
  },
-]
+].concat(newOptimizationExamples).map(example=>({...example,added:!!changeOptions.find(option=>option.value===example.id)?.added}))
 
 export function optimizationExample(id){return optimizationExamples.find(item=>item.id===id)||optimizationExamples[0]}
 export const walkthroughSteps = ['看案例', '查原因', '试改法', '看对比', '做决定']

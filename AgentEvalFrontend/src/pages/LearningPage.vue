@@ -3,6 +3,7 @@ import {computed,inject,nextTick,onMounted,reactive,ref} from 'vue'
 import {api} from '../api.js'
 import LearningWalkthrough from '../components/LearningWalkthrough.vue'
 import LearningWritingExample from '../components/LearningWritingExample.vue'
+import {optimizationExamples} from '../learning-example.js'
 const work=inject('workspace'),rag=inject('retrieval')
 const exampleMethod=ref('RERANK_TOGGLE')
 function openExperiment(){work.go(rag.state.baseline?'evaluate':'knowledge')}
@@ -57,7 +58,7 @@ onMounted(async()=>{try{pack.value=await api.get('/learning/pack');await reload(
 
 <template>
  <div class="learning-page">
-  <header class="page-heading"><div><p class="eyebrow">新手入门 · 不需要 API Key</p><h1>{{attempt?'跟着做一道题':'先看五种改法怎么选'}}</h1><p>{{attempt?'跟着步骤看资料、找问题，再决定怎么改。':'先找出问题所在，再选择修改，最后用原题复测。'}}</p></div><div class="button-row"><button v-if="attempt" class="text-button" @click="showWalkthrough=!showWalkthrough">{{showWalkthrough?'收起完整示范':'回看完整示范'}}</button><button class="text-button" @click="work.go('setup')">用自己的模型做实验 →</button></div></header>
+  <header class="page-heading"><div><p class="eyebrow">新手入门 · 不需要 API Key</p><h1>{{attempt?'跟着做一道题':`先看 ${optimizationExamples.length} 种改法怎么选`}}</h1><p>{{attempt?'跟着步骤看资料、找问题，再决定怎么改。':'先找出问题所在，再选择修改，最后用原题复测。'}}</p></div><div class="button-row"><button v-if="attempt" class="text-button" @click="showWalkthrough=!showWalkthrough">{{showWalkthrough?'收起完整示范':'回看完整示范'}}</button><button class="text-button" @click="work.go('setup')">用自己的模型做实验 →</button></div></header>
   <p v-if="error" class="note danger" role="alert">{{error}}</p><p v-if="loading" class="note" role="status">正在读取练习…</p>
   <LearningWalkthrough v-if="(!attempt&&!loading)||showWalkthrough" v-model:method-id="exampleMethod" @experiment="openExperiment" :busy="busy||!pack" :resume="!!attempt" @practice="startPractice('p01')" />
   <details v-if="!attempt&&!loading" class="panel practice-start"><summary>练习：核对证据与评分</summary>

@@ -31,7 +31,7 @@ TYPES.update({"knowledge_datasets": (KnowledgeDataset, "knowledge_dataset_id"),
               "retrieval_comparisons": (RetrievalComparison, "comparison_id"),
               "retrieval_reviews": (RetrievalReview, "review_id")})
 TYPES.update({'retrieval_validations':(RetrievalValidation,'validation_id'),
-              'retrieval_validation_runs':(RetrievalRun,'run_id')})
+              'retrieval_validation_runs':(RetrievalRun,'run_id'),'retrieval_trial_runs':(RetrievalRun,'run_id')})
 from .learning_models import LearningAttempt, LearningEvent, LearningReview
 TYPES.update({'learning_attempts':(LearningAttempt,'attempt_id'),
               'learning_events':(LearningEvent,'event_id'),'learning_reviews':(LearningReview,'review_id')})
@@ -53,6 +53,17 @@ TYPES.update({'answer_artifacts':(AnswerArtifact,'answer_id'),'score_jobs':(Scor
 TYPES.update({'operation_domains':(DomainVersion,'profile_id'),'evidence_batches':(EvidenceBatch,'batch_id'),
     'inference_jobs':(InferenceJob,'job_id'),'inference_events':(InferenceEvent,'event_id'),
     'operations_reviews':(OperationsReview,'review_id'),'sampling_plans':(SamplingPlan,'plan_id'),'daily_plans':(DailyPlan,'plan_id')})
+from .rag_deepeval import MetricBatch
+TYPES.update({'rag_metric_batches':(MetricBatch,'batch_id')})
+from .rag_index_jobs import IndexBuild
+TYPES.update({'index_builds':(IndexBuild,'job_id')})
+from .rag_lab import DiagnosticRun
+TYPES.update({'rag_diagnostics':(DiagnosticRun,'diagnostic_id')})
+from .external_suggestions import ExternalSuggestion
+TYPES.update({'external_suggestions':(ExternalSuggestion,'suggestion_id')})
+from .retest_flow import RetestFlow
+TYPES.update({'retest_flows':(RetestFlow,'flow_id')})
+
 VERSION_FIELDS = {'evalsets': 'eval_set_version', 'knowledge_datasets': 'version', 'retrieval_evalsets': 'version'}
 TERMINAL = {"COMPLETE", "PARTIAL", "FAILED"}
 SENSITIVE = re.compile(r"(^|_)(api_key|authorization|secret|password|credential|access_token|refresh_token)($|_)", re.I)
@@ -157,6 +168,19 @@ class JsonStore:
             if group in {'learning_attempts','learning_events','learning_reviews'}:
                 raise ValueError('Immutable learning record already sealed')
             previous = self.get(group, getattr(obj, id_field),revision)
+            if group=='index_builds':
+                mutable={'status','index_id','error','elapsed_ms','finished_at'}
+                allowed={('SUBMITTED','BUILDING'),('SUBMITTED','FAILED'),('SUBMITTED','CANCELLED'),('BUILDING','READY'),('BUILDING','FAILED'),('BUILDING','CANCELLED')}
+                if (previous.status,obj.status) not in allowed or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Index build receipt frozen')
+            if group=='rag_metric_batches':
+                mutable={'status','result','error','finished_at'}
+                if previous.status!='RUNNING' or obj.status not in {'COMPLETE','FAILED'} or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Metric observations frozen')
+            if group=='rag_diagnostics':
+                mutable={'status','result','error','finished_at','observations','request_count'}
+                if previous.status!='RUNNING' or obj.status not in {'COMPLETE','FAILED'} or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
+                    raise ValueError('Diagnostic evidence frozen')
             if group=='score_jobs':
                 mutable={'status','finished_at','report_id','last_error'}
                 if previous.status in {'COMPLETE','FAILED'} or any(previous.model_dump()[k]!=data[k] for k in data if k not in mutable):
@@ -184,7 +208,7 @@ class JsonStore:
             if group in {'ai_drafts','knowledge_datasets','knowledge_indices','retrieval_evalsets',
                          'retrieval_comparisons','retrieval_reviews','chat_turns','repeat_reports','experiment_conclusions','interview_attempts'}:
                 raise ValueError('Immutable retrieval artifact already sealed')
-            if group in {'retrieval_runs','retrieval_validation_runs'}:
+            if group in {'retrieval_runs','retrieval_validation_runs','retrieval_trial_runs'}:
                 if previous.status in TERMINAL:
                     raise ValueError('Immutable retrieval Run already sealed')
                 mutable = {'status','finished_at','case_results','answer_results','metrics','answer_metrics',

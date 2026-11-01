@@ -89,7 +89,7 @@
       <span class="arrow" aria-hidden="true">→</span>
       <div class="node sage"><svg class="node-art" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><use href="#guide-compare"/></svg><span class="node-label">检查分歧</span><strong>回到原文核对</strong><span class="small">修订评分方法后<br>再用未参与调试的题验证</span></div>
     </div>
-    <figcaption>先看过模型结果，再检查这道题，叫<b>人工复核</b>；它不能代替独立判断。</figcaption>
+    <figcaption>只想核对一题？点评分旁的<b>「检查这次评分 → 复制提问给 AI」</b>，自动带上本题材料。AI 建议不能代替独立人工判断。</figcaption>
   </figure>
 </section>
 
@@ -105,9 +105,9 @@
 </section>
 
 <section class="details-section" aria-label="按需阅读详细说明">
-  <details class="full-guide"><summary><span><strong>需要查具体操作或术语？</strong><small>展开原来的完整文字说明</small></span><span class="plus" aria-hidden="true">＋</span></summary><div class="long-copy"><h1>日志评测、日常检查与评测标准：新手使用说明</h1>
+  <details class="full-guide"><summary><span><strong>需要查具体操作或术语？</strong><small>展开原来的完整文字说明</small></span><span class="plus" aria-hidden="true">＋</span></summary><div class="long-copy"><h1>检查 AI 打分、日志重评与评分标准</h1>
 <p>你已经让客服回答过一批问题。接下来通常有两个疑问：<strong>这些回答好不好？给它打分的模型，判得可靠吗？</strong></p>
-<p>“日志评测与日常运行”处理第一个问题；“评分标准”和“评测校准”处理第二个问题。这里的“日志”，就是之前保存的问题、回答、参考资料和执行记录。</p>
+<p>主流程到「整理项目」即可结束。怀疑某道题的原判，直接点评分旁的「检查这次评分 → 复制提问给 AI」，自动带上原题、回答、资料、原评分与细则。无需创建分类、填写操作人或寻找记录。</p><p>侧栏底部「检查 AI 打分 · 进阶」提供单题检查和「人工与 AI 对照」两种用途；「批量重评与定期检查」是其中的次级入口。复制只整理本地文字，不调用模型，也不更改原判。</p>
 <h2>先选对入口</h2>
 <table>
 <thead>
@@ -124,27 +124,32 @@
 <td>产生新的客服回答，与原回答比较</td>
 </tr>
 <tr>
-<td>检查之前已经生成的回答</td>
-<td>日志评测与日常运行</td>
-<td>读取原回答，核对资料，再评分</td>
+<td>怀疑这道题判错了</td>
+<td>本题评分旁「检查这次评分」</td>
+<td>自动带本题材料，复制提问请 AI 分析</td>
+</tr>
+<tr>
+<td>一次重评多条已保存的回答</td>
+<td>检查 AI 打分 → 批量重评与定期检查</td>
+<td>固定原回答，核对资料，再评分</td>
 </tr>
 <tr>
 <td>明确“什么算好回答”</td>
-<td>评分标准</td>
+<td>检查 AI 打分 → 人工与 AI 对照</td>
 <td>定义每个分数的条件、例子和通过要求</td>
 </tr>
 <tr>
 <td>检查评分模型是否误判</td>
-<td>评测校准</td>
+<td>检查 AI 打分 → 人工与 AI 对照</td>
 <td>将模型评分与独立人工判断对照，检查并修订评分方法</td>
 </tr>
 </tbody>
 </table>
 <p>日志重评固定原回答。因此，改了评分规则后分数上涨，只能说明判分发生变化；要验证客服改好了，需要回主实验生成复测回答。</p>
-<h2>一、日志评测与日常运行</h2>
+<h2>一、批量重评与定期检查（进阶）</h2>
 <h3>第一次使用，按这三步做</h3>
 <ol>
-<li><strong>选择回答。</strong> 建立或选择“评测分类”，例如“售后政策问答”。在“从之前的评测导入”中选择一次已完成的初测或复测，点击“导入这次评测的回答”。不需要下载文件再上传。</li>
+<li><strong>选择回答。</strong> 在「批量重评与定期检查」中选择已有规则，或首次设置规则。选一次已完成的初测或复测，点击“使用这次评测的回答”。不用下载再上传。默认署名“当前工作区”，需要区分复核者时再修改。</li>
 <li><strong>核对资料。</strong> 系统带入原问题、原回答与当时保存的资料。逐条确认是否属于当前业务，以及参考资料能否判断这题。补上纳入或排除的理由，再保存本批回答。</li>
 <li><strong>评分与复核。</strong> 点击“开始评分已有回答”。查看判定、理由和引用；有异议时使用“人工复核本题”，说明依据。原模型判定与人工复核会分别保留。</li>
 </ol>
@@ -301,7 +306,7 @@
 </ol>
 <p>如果已经看过模型答案再做人评，那是复核，不能当作独立盲评。它仍有纠错价值，但不能据此证明评分模型与独立人工高度一致。页面提供这些流程，不代表系统已经完成真实人工校准。</p>
 <h3>我现在需要用哪一部分？</h3>
-<p>第一次做项目，先完成主实验的初测、一次修改和复测，学会看逐题证据。想检查已有回答时，用日志评测；开始怀疑“为什么这一题判错了”时，再进入评分标准与评测校准。每日计划可以等有固定题集、明确检查目的之后再启用。</p>
+<p>第一次做项目，先完成主实验的初测、一次修改和复测，再整理项目即可。怀疑单题原判时，在评分旁直接复制本题提问；需要系统检查评分方法时再进入「人工与 AI 对照」。批量重评和每日计划可以等有明确目的之后再用。</p>
 </div></details>
   <details class="sources"><summary>图解参考与适用范围</summary><p>图中的杯子案例是教学示例。不同评测工具的公式和判定口径可能不同；本站规则以实际保存版本为准。</p><ul><li><a href="https://docs.langchain.com/langsmith/evaluate-rag-tutorial" target="_blank" rel="noopener">LangChain 官方：RAG 评测中分别比较什么</a></li><li><a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/" target="_blank" rel="noopener">Ragas 官方：回答与检索依据的一致性</a></li></ul></details>
 </section>

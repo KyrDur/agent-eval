@@ -17,7 +17,7 @@ ANSWER_PROMPT = 'RAG_ANSWER_V1: 你是智能电商客服。仅根据本次检索
 
 def pipeline_snapshot(config):
     profile=config.resolved()['general']
-    return {'rewrite':{'model_configuration':profile,'prompt_version':'1','prompt_hash':text_hash(REWRITE_PROMPT),
+    return {'retrieval':{'bm25_tokenizer':'CJK_UNIGRAM_BIGRAM_ASCII_IDENTIFIER_V1','bm25_k1':1.5,'bm25_b':0.75,'fusion':'RRF','rrf_k':60,'per_route_candidates':'candidate_pool_size','context_character_limit':12000,'context_budget_unit':'CHARACTERS_NOT_TOKENS'},'rewrite':{'model_configuration':profile,'prompt_version':'1','prompt_hash':text_hash(REWRITE_PROMPT),
                        'failure_policy':'INVALID_NO_FALLBACK'},
             'rerank':{'model_configuration':profile,'prompt_version':'1','prompt_hash':text_hash(RERANK_PROMPT),
                       'failure_policy':'INVALID_NO_FALLBACK','scoring':'LLM_0_TO_1'},
@@ -89,7 +89,8 @@ async def retrieve_context(knowledge,index,provider,query,config,pipeline,contex
             end()
         else: row['steps'].append({'operation':'QUERY_REWRITE','status':'SKIPPED','latency_ms':None,'error':None})
         begin('RETRIEVAL')
-        items=await asyncio.to_thread(knowledge.search,index,search_query,config.candidate_pool_size)
+        from .rag_retrieval import search,assemble
+        items=await asyncio.to_thread(search,knowledge,index,search_query,config)
         row['pre_rerank_results']=items
         active['result_count']=len(items);end()
         if config.rerank:
@@ -100,7 +101,8 @@ async def retrieve_context(knowledge,index,provider,query,config,pipeline,contex
             end()
         else: row['steps'].append({'operation':'RERANK','status':'SKIPPED','latency_ms':None,'error':None})
         row['post_rerank_results']=items
-        row['results']=items[:config.top_k]
+        row['selected_results']=items[:config.top_k]
+        row['results'],row['context_assembly']=assemble(index,row['selected_results'],config)
     except EmbeddingFailure as error: row.update(status='INVALID',error=str(error))
     except ProviderFailure as error: row.update(status='INVALID',error=error.code)
     except Exception: row.update(status='INVALID',error='RETRIEVAL_EXECUTION_FAILED')

@@ -5,7 +5,7 @@ import {copy,questionTypes,estimateTestCalls,confirmGeneratedEvidence} from '../
 import {selectedQuestion} from '../question-navigation.js'
 import QuestionNavigator from './QuestionNavigator.vue'
 import AssistModel from './AssistModel.vue'
-const props=defineProps({directSave:Boolean})
+const props=defineProps({directSave:Boolean,autoAdd:Boolean})
 const emit=defineEmits(['adopt']),work=inject('workspace'),rag=inject('retrieval'),ai=inject('ai'),s=ai.tests
 const sid=computed(()=>ai.modelSession||work.state.session?.provider_session_id)
 const session=computed(()=>ai.modelSession?ai.providerOptions.find(s=>s.provider_session_id===ai.modelSession):work.state.session)
@@ -15,10 +15,11 @@ const selected=computed(()=>s.cases.filter(c=>s.selected.includes(c.case_id)))
 const activeId=ref(''),current=computed(()=>selectedQuestion(s.cases,activeId.value))
 watch(()=>s.draft?.draft_id,()=>{activeId.value=s.cases[0]?.case_id||''})
 const relatedDocuments=c=>(rag.state.knowledge?.documents||[]).filter(d=>c.relevant_document_ids.includes(d.document_id))
-async function generate(){await work.action('AI 根据资料出题',async()=>{
+async function generate(){const draft=await work.action('AI 根据资料出题',async()=>{
  const draft=await api.post('/ai/tests',{request_id:crypto.randomUUID(),provider_session_id:sid.value,index_id:rag.state.index.index_id,count:s.count,question_types:s.types})
  s.draft=draft;s.cases=copy(draft.content.cases);s.selected=s.cases.map(c=>c.case_id);s.confirmed=false
-})}
+ return draft
+});if(props.autoAdd&&draft)emit('adopt',{cases:copy(s.cases),index_id:draft.content.index_id,preview:true})}
 function adopt(){try{emit('adopt',{cases:confirmGeneratedEvidence(selected.value,s.confirmed),index_id:s.draft.content.index_id,save:props.directSave});s.confirmed=false}catch(e){work.state.notice=e.message}}
 </script>
 <template>
@@ -28,9 +29,9 @@ function adopt(){try{emit('adopt',{cases:confirmGeneratedEvidence(selected.value
    <details class="preparation-options"><summary v-track="{action:'tests.settings',placement:'TestGenerator.control_10'}">出题设置 · {{s.count}} 道题</summary><div class="form-row"><label>生成题数<select v-model.number="s.count"><option :value="4">4 道</option><option :value="8">8 道</option><option :value="12">12 道</option></select></label></div><div class="button-row"><label class="check" v-for="type in questionTypes" :key="type"><input type="checkbox" v-model="s.types" :value="type" />{{type}}</label></div><AssistModel/></details>
    <p class="call-estimate">预计调用模型 {{estimateTestCalls(s.count)}} 次，使用当前知识资料出题。</p>
    <p v-if="!ready" class="muted">先连接模型并测试连接，即可生成题目。</p>
-   <button v-track="{action:'tests.generate',placement:'TestGenerator.control_03',core:true,reason:(!ready ? 'connection' : !rag.state.index ? 'index' : 'missing_input')}" class="primary" :disabled="!ready || !rag.state.index || !s.types.length" @click="generate">{{s.draft?'重新出题':'AI 生成测试题'}}</button>
+   <button v-track="{action:'tests.generate',placement:'TestGenerator.control_03',core:true,reason:(!ready ? 'connection' : !rag.state.index ? 'index' : 'missing_input')}" class="primary" :disabled="!ready || !rag.state.index || !s.types.length" @click="generate">{{work.state.busy?'正在出题…':s.draft?'重新出题':'生成测试题'}}</button><p v-if="work.state.busy" class="muted" role="status">正在生成，完成后会直接显示在下方。</p>
   </fieldset>
-  <div v-if="s.draft" class="ai-draft">
+  <div v-if="s.draft&&!autoAdd" class="ai-draft">
    <p class="note positive" role="status">已生成 {{s.cases.length}} 道题。点击题号，逐题查看预期回答和原文。</p>
    <details class="generation-record"><summary>出题记录</summary><p>知识 v{{s.draft.content.knowledge_version}} · {{s.draft.provider_call_count}} 次模型调用 · AI 生成，用于调试</p><p class="muted">独立验证时，请另外准备未参与调整的题目。</p></details>
    <p v-if="stale" class="note warning">知识资料已更新，请重新出题。</p>

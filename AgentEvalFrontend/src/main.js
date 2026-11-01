@@ -5,6 +5,8 @@ import './style.css'
 import './ui-foundations.css'
 import './calibration.css'
 import './visual-workspace.css'
+import './ux-refresh.css'
+import './disclosures.css'
 import {installControlAnalytics} from './analytics-controls.js'
 import {analytics,loadUmami} from './analytics.js'
 loadUmami()

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {reviewLog,reviewText} from '../src/evaluation-export.js'
+import {reviewLog,reviewText,logScopeCases} from '../src/evaluation-export.js'
+import {completeLog,consultationText} from '../src/consultation-material.js'
 const view=()=>({run:{run_id:'saved-run',execution_order:['one','two'],provider_configuration_snapshot:{model:'saved-model'},
  controls:{eval_set_snapshot:{cases:[{case_id:'one',expected_answer:'first'},{case_id:'two',expected_answer:'second'}]},knowledge_snapshot:{documents:[{text:'original policy'}]}},
  case_results:[{case_id:'one',provider_call_traces:[{model_inputs:{messages:['saved input']},model_outputs:{content:'saved output'}}]},{case_id:'two',query:'other question'}],
@@ -40,4 +41,40 @@ test('Comparison exports pair membership and both original runs; selecting a cas
  assert.deepEqual(one.comparison.case_pairs,[{case_id:'two'}])
  assert.deepEqual(one.retest.execution_order,['two'])
  assert.equal(one.comparison.whole_comparison_metrics,undefined)
+})
+
+test('legacy consultation text also removes credential fields while retaining failures',()=>{
+ const v=view();v.run.case_results[0].authorization='Bearer SECRET_SHOULD_NOT_BE_COPIED'
+ const text=reviewText({view:v});assert.ok(!text.includes('SECRET_SHOULD_NOT_BE_COPIED'));assert.ok(text.includes('JUDGMENT_SCHEMA_INVALID'))
+})
+
+test('filtered score reports retain the original question number instead of renumbering the subset',()=>{
+ const source=view()
+ source.run.execution_order=['one','two','three']
+ source.run.case_results.push({case_id:'three',query:'分期手续费怎么算？'})
+ const before=JSON.stringify(source)
+ const rows=logScopeCases({view:source,scoreReport:{case_ids:['three']}})
+ assert.equal(rows.length,1);assert.equal(rows[0].source_number,3)
+ assert.equal(rows[0].query,'分期手续费怎么算？')
+ assert.equal(JSON.stringify(source),before)
+ const comparison={case_pairs:[{case_id:'three',query:'分期手续费怎么算？'}]}
+ assert.equal(logScopeCases({comparison,baselineView:source})[0].source_number,3)
+})
+
+test('score-report full logs and AI materials use report membership even without a manual case selection',()=>{
+ const source=view(),before=JSON.stringify(source)
+ const report={report_id:'single-score',case_ids:['two'],adoption_manifest:[{case_id:'two'}]}
+ const log=completeLog({view:source,scoreReport:report})
+ assert.deepEqual(log.scope.case_ids,['two'])
+ assert.deepEqual(log.records.view.run.case_results.map(c=>c.case_id),['two'])
+ assert.deepEqual(log.records.view.run.answer_results.map(c=>c.case_id),['two'])
+ assert.deepEqual(log.records.view.effective_answer_results.map(c=>c.case_id),['two'])
+ assert.deepEqual(log.records.selected_score_report,report)
+ assert.deepEqual(log.records.view.run.execution_order,['one','two']) // Global source order is retained.
+ assert.deepEqual(reviewLog({view:source,scoreReport:report}).scope.case_ids,['two'])
+ const material=JSON.parse(consultationText({logOptions:{view:source,scoreReport:report}}).split('\n\n').at(-1))
+ assert.deepEqual(material.recorded_logs.records.view.run.case_results.map(c=>c.case_id),['two'])
+ assert.equal(completeLog({view:source,scoreReport:report,caseId:'one'}).records.view.run.case_results.length,0)
+ assert.equal(completeLog({view:source}).records.view.run.case_results.length,2)
+ assert.equal(JSON.stringify(source),before)
 })

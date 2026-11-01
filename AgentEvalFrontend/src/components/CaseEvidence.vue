@@ -1,11 +1,15 @@
 <script setup>
-import { inject } from 'vue'
+import MarkdownContent from './MarkdownContent.vue'
+import { inject,ref } from 'vue'
 import { dimensions, qualityVisible } from '../presentation'
 import StatusBadge from './StatusBadge.vue'
 import EvidenceDetails from './EvidenceDetails.vue'
 import ReviewForm from './ReviewForm.vue'
+import ScoreCheckPanel from './ScoreCheckPanel.vue'
+import WorkspaceDrawer from './WorkspaceDrawer.vue'
 defineProps({ result: Object, runId: String, diagnose: Boolean, thresholds: Object })
 const work = inject('workspace')
+const scoreOpen=ref(false)
 </script>
 <template>
   <article class="case-card" :data-case-id="result.case_id">
@@ -16,6 +20,7 @@ const work = inject('workspace')
     <p v-else-if="result.review_status === 'PENDING'" class="note">待人工复核：Agent 已执行，尚未形成有效质量结论。这不属于评测错误。</p>
     <p class="reason"><strong>判定依据</strong> {{ result.detail || result.original_reason }}</p>
     <div class="machine-line"><span>机器判定 <StatusBadge :status="result.original_status" /></span><span>有效判定 <StatusBadge :status="result.final_status" /></span></div>
+    <button type="button" class="text-button" @click="scoreOpen=true">检查这次评分</button>
     <p v-if="result.human_final_status" class="note">人工最终判定：{{ result.human_final_status }} · {{ result.human_reason }}<br />{{ result.hard_rule_override ? '人工已覆盖 Hard Rule；机器违规记录仍保留。' : '机器原判与原始理由保留。' }}</p>
     <p v-if="result.human_final_status" class="muted">机器原判理由：{{ result.original_reason }}</p>
     <ul v-if="result.hard_rule_violations.length" class="violations"><li v-for="item in result.hard_rule_violations" :key="item">Hard Rule violation：{{ item }}</li></ul>
@@ -24,12 +29,13 @@ const work = inject('workspace')
     </div>
     <p v-else class="muted" data-testid="no-quality">{{ result.judge_status === 'NOT_REQUIRED' ? '本题按确定性规则判定，无需质量 Judge。' : '本题没有有效的四维质量评分。' }}</p>
     <details class="conversation" open><summary v-track="{action:'case.details',placement:'CaseEvidence.control_01'}">对话与回答 <span>{{ result.turn_evidence.length }} 轮 · 1 个 Case</span></summary>
-      <div v-for="turn in result.turn_evidence" :key="turn.turn" class="turn"><div class="user-message"><small>用户 · 第 {{ turn.turn }} 轮</small><p>{{ turn.question }}</p></div><div class="agent-message"><small>Agent 回答</small><p>{{ turn.response || '未生成可用回答' }}</p></div>
+      <div v-for="turn in result.turn_evidence" :key="turn.turn" class="turn"><div class="user-message"><small>用户 · 第 {{ turn.turn }} 轮</small><p>{{ turn.question }}</p></div><div class="agent-message"><small>Agent 回答</small><MarkdownContent :source="turn.response || '未生成可用回答'" /></div>
         <details v-if="turn.tool_traces.length" class="tools"><summary v-track="{action:'case.judge',placement:'CaseEvidence.control_02'}">工具调用证据 · {{ turn.tool_traces.length }} 次</summary><div v-for="(trace, i) in turn.tool_traces" :key="i"><strong>{{ trace.tool_name || trace.tool || trace.name || '工具调用' }}</strong><span class="badge" :class="trace.success ? 'pass' : 'fail'">{{ trace.success ? '成功' : '失败' }}</span><pre>{{ JSON.stringify(trace, null, 2) }}</pre></div></details>
       </div>
     </details>
     <button v-track="{action:'change.diagnose',placement:'CaseEvidence.control_03',core:true,reason:('busy')}" v-if="diagnose && result.final_status === 'FAIL'" class="secondary" :disabled="!!work.state.busy" @click="work.diagnose(result.case_id)">分析这个问题</button>
     <ReviewForm data-analytics-location="CaseEvidence.ReviewForm.1" v-if="runId" :result="result" :run-id="runId" />
     <EvidenceDetails data-analytics-location="CaseEvidence.EvidenceDetails.2" :data="result" title="查看此 Case 的原始证据" />
+    <WorkspaceDrawer :open="scoreOpen" title="检查这次评分" @close="scoreOpen=false"><ScoreCheckPanel :case-id="result.case_id" :run-id="runId" :behavior-result="result" :thresholds="thresholds" /></WorkspaceDrawer>
   </article>
 </template>

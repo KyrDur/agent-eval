@@ -24,7 +24,7 @@ class KnowledgeDataset(Artifact):
 class ChunkConfig(InputModel):
     chunk_size: int = Field(default=500, ge=50, le=2000, strict=True)
     chunk_overlap: int = Field(default=50, ge=0, strict=True)
-    algorithm: Literal['normalized-character-window-v1'] = 'normalized-character-window-v1'
+    algorithm: Literal['normalized-character-window-v1','source-section-v1'] = 'normalized-character-window-v1'
 
     @model_validator(mode='after')
     def valid_overlap(self):
@@ -64,6 +64,7 @@ class RetrievalCase(InputModel):
     context: list[dict] = Field(default_factory=list, max_length=20)
     source_chat_turn_id: str | None = None
     allow_missing_knowledge: bool = False
+    knowledge_requirements: dict = Field(default_factory=dict)
     # Versioned companion metadata; absent historical fields remain absent in
     # semantic hashes rather than acquiring invented provenance on read.
     evidence_context: dict = Field(default_factory=dict)
@@ -75,6 +76,7 @@ class RetrievalCase(InputModel):
     def legacy_serialization(self,handler):
         data=handler(self)
         if not self.generation:data.pop('generation',None)
+        if not self.knowledge_requirements:data.pop('knowledge_requirements',None)
         for key in ('group_id','template_id'):
             if getattr(self,key) is None:data.pop(key,None)
         for key in ('evidence_context','reference_complete','reference_completeness','scenario_rules'):
@@ -83,6 +85,9 @@ class RetrievalCase(InputModel):
 
     @model_validator(mode='after')
     def labels(self):
+        if self.knowledge_requirements:
+            from .rag_evidence import RequirementSet
+            RequirementSet.model_validate(self.knowledge_requirements)
         context=self.evidence_context
         if context.get('source_type') not in {None,'UNKNOWN','ACTUAL','CONSTRUCTED','AI_GENERATED'}:raise ValueError('Invalid sample source type')
         for key in ('object_ids','policy_versions'):
@@ -131,6 +136,16 @@ class RetrievalConfig(InputModel):
     rerank: bool = Field(default=False, strict=True)
     # Candidate pool is fixed across rerank OFF/ON. Top K is the display cutoff.
     candidate_pool_size: int = Field(default=20, ge=20, le=100, strict=True)
+    retrieval_mode: Literal['VECTOR','BM25','HYBRID'] = 'VECTOR'
+    context_strategy: Literal['SELECTED','NEIGHBORS','PARENT'] = 'SELECTED'
+
+    @model_serializer(mode='wrap')
+    def preserve_legacy(self,handler):
+        data=handler(self)
+        for key,default in [('retrieval_mode','VECTOR'),('context_strategy','SELECTED')]:
+            if getattr(self,key)==default:data.pop(key,None)
+        return data
+
     cache_enabled: Literal[False] = False
     cache_namespace: None = None
     cache_policy: Literal['DISABLED'] = 'DISABLED'
@@ -173,10 +188,15 @@ class RetrievalRun(Artifact):
             if key not in self.model_fields_set:data.pop(key,None)
         return data
 
+class VerificationPlan(InputModel):
+    prediction: Literal['UNSPECIFIED','FACT_INCLUSION','RANKING_CONTEXT','CUSTOM'] = 'UNSPECIFIED'
+    risk: Literal['UNSPECIFIED','ANSWER_REGRESSION','COST','CUSTOM'] = 'UNSPECIFIED'
+
 class RetrievalChange(Artifact):
     change_id: str = Field(default_factory=uid)
     baseline_run_id: str
-    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE','ANSWER_PROMPT_CHANGE']
+    change_type: Literal['TOP_K_CHANGE','QUERY_REWRITE_TOGGLE','RERANK_TOGGLE','KNOWLEDGE_UPDATE','ANSWER_PROMPT_CHANGE','CHUNKING_CHANGE','EMBEDDING_CHANGE','RETRIEVAL_MODE_CHANGE','CONTEXT_STRATEGY_CHANGE','CANDIDATE_POOL_CHANGE']
+    verification_plan: VerificationPlan | None = None
     target_index_id: str | None = None
     target_eval_set_id: str | None = None
     reason: str = Field(min_length=1, max_length=3000)
@@ -190,6 +210,12 @@ class RetrievalChange(Artifact):
     implemented_status: Literal['PROPOSED','APPLIED'] = 'PROPOSED'
     applied_at: str | None = None
     application_evidence: dict = Field(default_factory=dict)
+
+    @model_serializer(mode='wrap')
+    def preserve_historical_shape(self,handler):
+        data=handler(self)
+        if 'verification_plan' not in self.model_fields_set:data.pop('verification_plan',None)
+        return data
 
 class RetrievalComparison(Artifact):
     comparison_id: str = Field(default_factory=uid)

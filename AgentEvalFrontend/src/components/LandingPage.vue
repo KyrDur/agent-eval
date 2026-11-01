@@ -1,5 +1,6 @@
 <script setup>
 import {nextTick,ref} from 'vue'
+import PaperIllustration from './PaperIllustration.vue'
 import EvidenceStrip from './EvidenceStrip.vue'
 import '../landing.css'
 defineProps({busy:Boolean,canContinue:Boolean})
@@ -33,7 +34,7 @@ const selected=()=>examples.find(e=>e.id===selectedId.value)
   </header>
 
   <section id="product" class="landing-hero landing-container" aria-labelledby="landing-title">
-   <div class="landing-hero-copy"><p class="landing-eyebrow">AGENT EVAL · 从一个完整案例开始</p><h1 id="landing-title" v-track="{action:'welcome.content',placement:'LandingPage.content_product',kind:'view',content:'product'}">客服 Agent 答错了，<br/>你知道该改哪里吗？</h1><p class="landing-intro">资料没找对？回答漏了条件？还是评分模型判错了？先看一个案例怎样查明原因、尝试修改、对比结果，再跟着做一道题。</p>
+   <div class="landing-hero-copy"><PaperIllustration /><p class="landing-eyebrow">AGENT EVAL · 从一个完整案例开始</p><h1 id="landing-title" v-track="{action:'welcome.content',placement:'LandingPage.content_product',kind:'view',content:'product'}">客服 Agent 答错了，<br/>你知道该改哪里吗？</h1><p class="landing-intro">资料没找对？回答漏了条件？还是评分模型判错了？先看一个案例怎样查明原因、尝试修改、对比结果，再跟着做一道题。</p>
     <div class="landing-actions"><button class="primary landing-main-action" :disabled="busy" @click="emit('practice')">先看一个完整案例 →</button><button v-track="{action:'welcome.setup',placement:'App.control_10',core:true}" class="secondary landing-main-action" :disabled="busy" @click="start">使用自己的模型做实验 <span aria-hidden="true">→</span></button><button v-if="canContinue" v-track="{action:'site.navigate.evaluate',placement:'App.control_11',core:true}" class="text-button" :disabled="busy" @click="resume">继续已有实验 <span aria-hidden="true">→</span></button></div>
     <p class="landing-key-note">看示范、做练习都不需要 API Key。使用自己的模型时，调用费用由模型服务商收取。</p>
    </div>

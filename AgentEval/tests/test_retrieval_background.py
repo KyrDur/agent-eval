@@ -33,6 +33,10 @@ def test_http_returns_before_model_finishes_and_polling_and_replay_do_not_repeat
             identifier=accepted.json()['run_id'];await asyncio.wait_for(entered.wait(),2)
             path=rag.store.path('retrieval_runs',identifier);before=path.read_bytes()
             for _ in range(3):
+                receipt=await client.get('/experiments/retrieval-run-tasks/'+body['request_id'])
+                assert receipt.status_code==200 and receipt.json()['run_id']==identifier
+                assert receipt.json()['request_id']==body['request_id']
+                assert receipt.json()['status']=='RUNNING'
                 current=await client.get('/experiments/retrieval-runs/'+identifier)
                 assert current.json()['run']['status']=='RUNNING'
                 assert current.json()['run']['provider_call_count']==0
@@ -49,6 +53,10 @@ def test_http_returns_before_model_finishes_and_polling_and_replay_do_not_repeat
         finished=rag.store.get('retrieval_runs',identifier)
         assert finished.status=='COMPLETE' and finished.provider_call_count==2
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url='http://test') as client:
+            before=path.read_bytes()
+            receipt=await client.get('/experiments/retrieval-run-tasks/'+body['request_id'])
+            assert receipt.status_code==200 and receipt.json()['status']=='COMPLETE'
+            assert receipt.json()['provider_call_count']==2 and path.read_bytes()==before
             repeated=await client.post('/experiments/retrieval-run-tasks',json=body)
             assert repeated.json()['run_id']==identifier and repeated.json()['provider_call_count']==2
         assert not background(rag).pending and not app.state.retrieval_slots.locked()
@@ -65,12 +73,28 @@ def test_disconnect_before_acceptance_does_not_cancel_task(fixture,monkeypatch):
             request=asyncio.create_task(client.post('/experiments/retrieval-run-tasks',json=body))
             await asyncio.wait_for(entered.wait(),2)
             task=background(rag).pending[body['request_id']][2]
+            receipt=await client.get('/experiments/retrieval-run-tasks/'+body['request_id'])
+            assert receipt.status_code==200
+            assert receipt.json()=={'request_id':body['request_id'],'status':'SUBMITTING'}
             request.cancel()
             with pytest.raises(asyncio.CancelledError):await request
             assert not task.done()
             gate.set();await asyncio.wait_for(task,10)
         run=next(r for r in rag.store.list('retrieval_runs') if r.request_id==body['request_id'])
         assert run.status=='COMPLETE' and run.provider_call_count==0
+    asyncio.run(exercise())
+
+def test_missing_and_invalid_receipt_lookup_never_create_tasks_or_consume_capacity(fixture,monkeypatch):
+    async def exercise():
+        app,rag,body=environment(fixture,monkeypatch)
+        before=list(rag.store.list('retrieval_runs'))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url='http://test') as client:
+            missing=await client.get('/experiments/retrieval-run-tasks/'+body['request_id'])
+            assert missing.status_code==404 and missing.json()['detail']=='RUN_RECEIPT_NOT_FOUND'
+            invalid=await client.get('/experiments/retrieval-run-tasks/invalid.request')
+            assert invalid.status_code==422 and invalid.json()['detail']=='IDEMPOTENCY_REQUEST_INVALID'
+        assert list(rag.store.list('retrieval_runs'))==before
+        assert not background(rag).pending and not app.state.retrieval_slots.locked()
     asyncio.run(exercise())
 
 def test_shutdown_preserves_partial_progress_and_releases_capacity(fixture,monkeypatch):

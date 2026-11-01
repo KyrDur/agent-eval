@@ -63,17 +63,17 @@ def normalize(e,focus,target,completions=(),schema_version='2'):
                 # Unlabelled cases have no ranking metric cutoffs. Absence is
                 # unavailable evidence, not a contradiction with the run config.
                 if row['metrics'].get('rank_cutoff') is not None and row['metrics']['rank_cutoff']!=len(row['post_rerank_results']): conflicts.append('排名截点与实际候选池不一致')
-                if len(row['results'])>run['retrieval_config']['top_k']: conflicts.append('最终返回结果超出 Top K')
+                if len(row.get('selected_results',row['results']))>run['retrieval_config']['top_k']: conflicts.append('最终返回结果超出 Top K')
                 if row['metrics'].get('quality_cutoff') is not None and row['metrics']['quality_cutoff']!=run['retrieval_config']['top_k']: conflicts.append('质量指标截点与 Top K 不一致')
             expected=r.get('config_before') if side=='baseline' else r.get('config_after')
             if expected!=run['retrieval_config']: conflicts.append('归一化配置与原始 Run 冲突')
         change=e.change
         if change and r.get('config_after'):
-            observed=[{'path':k,'before':r['config_before'][k],'after':r['config_after'].get(k)}
-                      for k in r['config_before'] if r['config_before'][k]!=r['config_after'].get(k)]
+            from .retrieval_service import config_diff
+            observed=config_diff(r['config_before'],r['config_after'])
             if change.get('before_config')!=r['config_before'] or change.get('after_config')!=r['config_after']:
                 conflicts.append('Change 声明配置与真实 Run 配置冲突')
-            if change.get('change_type')=='KNOWLEDGE_UPDATE':
+            if change.get('change_type') in {'KNOWLEDGE_UPDATE','CHUNKING_CHANGE','EMBEDDING_CHANGE'}:
                 indexed={run['run_type']:run['controls']['index_snapshot']['index_id'] for _,run in runs}
                 observed=[{'path':'knowledge_index','before':indexed.get('BASELINE'),'after':indexed.get('RETEST')}]
             if sorted(observed,key=lambda x:x['path'])!=sorted(change.get('observed_diff',[]),key=lambda x:x['path']):

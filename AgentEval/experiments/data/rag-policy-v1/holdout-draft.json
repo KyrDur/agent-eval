@@ -1,0 +1,338 @@
+{
+  "status": "DRAFT_NOT_BLIND_VALIDATION",
+  "same_policy_scenarios": true,
+  "cases": [
+    {
+      "case_id": "policy_17",
+      "query": "刚签收两天的普通商品配件弄丢了，能无理由退吗？",
+      "relevant_document_ids": [
+        "returns"
+      ],
+      "expected_answer": "普通实物商品自签收次日起七日内，可申请无理由退货。\n商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-17",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "returns_r1",
+            "description": "普通实物商品自签收次日起七日内，可申请无理由退货。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "普通实物商品自签收次日起七日内，可申请无理由退货。"
+                }
+              ]
+            ]
+          },
+          {
+            "fact_id": "returns_r2",
+            "description": "商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "returns",
+                  "quote": "商品、配件及包装须完整，且不影响二次销售；拆封本身不自动等于不能退。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_18",
+      "query": "商品吊牌价一百，我退款是不是就退一百？",
+      "relevant_document_ids": [
+        "refund"
+      ],
+      "expected_answer": "退款金额以订单实付及审核记录为准，不能按商品标价推算。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-18",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "refund_r4",
+            "description": "退款金额以订单实付及审核记录为准，不能按商品标价推算。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "refund",
+                  "quote": "退款金额以订单实付及审核记录为准，不能按商品标价推算。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_19",
+      "query": "订单取消时券还有效，现在去哪里找？",
+      "relevant_document_ids": [
+        "coupon"
+      ],
+      "expected_answer": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-19",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "coupon_r2",
+            "description": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "coupon",
+                  "quote": "整单取消且优惠券仍在有效期内时，券退回原账户；已过期的券不补发。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_20",
+      "query": "质量问题退回需要留什么凭证？",
+      "relevant_document_ids": [
+        "freight"
+      ],
+      "expected_answer": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-20",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "freight_r2",
+            "description": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "freight",
+                  "quote": "经售后核实为质量问题时，店铺承担合理寄回运费；须保留寄件凭证。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_21",
+      "query": "申请保修要报账户密码吗？",
+      "relevant_document_ids": [
+        "warranty"
+      ],
+      "expected_answer": "先核验订单号、购买时间、型号和故障表现；不得索要账户明文密码。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-21",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "warranty_r3",
+            "description": "先核验订单号、购买时间、型号和故障表现；不得索要账户明文密码。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "warranty",
+                  "quote": "先核验订单号、购买时间、型号和故障表现；不得索要账户明文密码。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_22",
+      "query": "显示签收了但我没拿到，怎么查？",
+      "relevant_document_ids": [
+        "logistics"
+      ],
+      "expected_answer": "显示签收但用户未收到时，先核验地址、代收点和签收信息，再交承运人调查。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-22",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "logistics_r3",
+            "description": "显示签收但用户未收到时，先核验地址、代收点和签收信息，再交承运人调查。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "logistics",
+                  "quote": "显示签收但用户未收到时，先核验地址、代收点和签收信息，再交承运人调查。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_23",
+      "query": "已经开票，后来退了一半钱，发票怎么办？",
+      "relevant_document_ids": [
+        "invoice"
+      ],
+      "expected_answer": "已开票后发生退款，应按退款金额处理红冲，不能重复开具全额发票。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-23",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "invoice_r3",
+            "description": "已开票后发生退款，应按退款金额处理红冲，不能重复开具全额发票。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "invoice",
+                  "quote": "已开票后发生退款，应按退款金额处理红冲，不能重复开具全额发票。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    },
+    {
+      "case_id": "policy_24",
+      "query": "退款之后积分不够扣，会不会直接免掉？",
+      "relevant_document_ids": [
+        "points"
+      ],
+      "expected_answer": "退款会按退款金额扣回相应积分；积分不足时记录待抵扣，不承诺免扣。",
+      "source": "demo",
+      "partition": "HOLDOUT",
+      "group_id": "policy-family-24",
+      "must_not_do": [
+        "不得把未知订单条件当作已满足",
+        "不得承诺未核验的处理结果"
+      ],
+      "reference_complete": null,
+      "knowledge_requirements": {
+        "review_status": "DRAFT",
+        "source": "CODEX",
+        "reviewer": "",
+        "expected_behavior": "ANSWER",
+        "user_information": "UNKNOWN",
+        "facts": [
+          {
+            "fact_id": "points_r2",
+            "description": "退款会按退款金额扣回相应积分；积分不足时记录待抵扣，不承诺免扣。",
+            "alternatives": [
+              [
+                {
+                  "document_id": "points",
+                  "quote": "退款会按退款金额扣回相应积分；积分不足时记录待抵扣，不承诺免扣。"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "evidence_context": {
+        "source_type": "AI_GENERATED"
+      }
+    }
+  ]
+}

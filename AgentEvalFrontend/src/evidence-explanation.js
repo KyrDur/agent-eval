@@ -1,4 +1,4 @@
-import labels from '../../AgentEval/experiments/evidence_reason_labels.json'
+import labels from '../../AgentEval/experiments/evidence_reason_labels.json' with {type:'json'}
 
 // Display-only projection. The backend's frozen decision and metric inputs stay intact.
 export function evidenceReasons(result,pack,state){
@@ -8,4 +8,10 @@ export function evidenceReasons(result,pack,state){
  const reasons=new Map()
  for(const raw of codes){const code=String(raw||'');if(!code)continue;const known=Object.keys(labels).find(k=>code.includes(k));if(known)reasons.set(known,{code:known,message:labels[known][0],next_step:labels[known][1]});else{const key=code.split(':')[0];if(!reasons.has(key))reasons.set(key,{code,message:'本题仍有需要核对的证据项',next_step:'展开本题的评分资料，核对列出的不足项和原文。'})}}
  return reasons.size?[...reasons.values()]:[{code:'INSUFFICIENT_REASON_UNRECORDED',message:'当前记录未说明具体缺口，暂时无法确定原因',next_step:'核对这道题的原始资料与评分结果，不能据此推断是知识库或模型出错。'}]
+}
+
+export function explainEvidenceItem(raw){
+ const code=String(raw?.reason||raw||'')
+ const known=Object.keys(labels).find(k=>code.includes(k))
+ return known?{message:labels[known][0],nextStep:labels[known][1]}:{message:'本题有一项证据还需要核对',nextStep:'请对照政策原文和本题条件；具体标识保留在技术记录中。'}
 }
